@@ -1,5 +1,10 @@
 // The streaming reveal: per-character fades that never restart, and the
 // column rules for which blocks animate.
+//
+// Loads fonts from files (dart:io): the VM only.
+@TestOn('vm')
+library;
+
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;

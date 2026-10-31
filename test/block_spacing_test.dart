@@ -59,12 +59,12 @@ void main() {
   for (final selectable in [false, true]) {
     group('selectable: $selectable', () {
       testWidgets('one paragraph adds no space', (tester) async {
-        final height = await _pumpHeight(tester, 'alpha', selectable: selectable);
+        final height =
+            await _pumpHeight(tester, 'alpha', selectable: selectable);
         expect(height, _textHeight(tester, 'alpha'));
       });
 
-      testWidgets('spacing goes only between top-level blocks',
-          (tester) async {
+      testWidgets('spacing goes only between top-level blocks', (tester) async {
         final height = await _pumpHeight(
           tester,
           'alpha\n\n# beta\n\ngamma',

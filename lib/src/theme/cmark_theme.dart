@@ -113,6 +113,7 @@ class CmarkThemeData {
   final Color thematicBreakColor;
   final double thematicBreakThickness;
   final double thematicBreakVerticalPadding;
+
   /// Vertical space between two sibling blocks, such as two paragraphs.
   ///
   /// The space goes only between blocks. A block that is alone, or last in
@@ -135,6 +136,7 @@ class CmarkThemeData {
   ///
   /// The provided [level] is 1-based, where the outermost list has level 1.
   final double Function(int level) unorderedListIndent;
+
   /// Vertical space between two items of a loose list. A tight list has
   /// no space between its items.
   final double listItemSpacing;
