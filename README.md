@@ -14,6 +14,7 @@ widgets composed from `InlineSpan`s.
 - Basic support for GitHub Flavored Markdown (headings, lists, tables,
   block quotes, code blocks, strikethrough, etc.)
 - Optional selectable text output
+- Optional fade-in of streamed text that costs no build or layout per frame
 - Syntax highlighting powered by `highlight`/`flutter_highlight` with
   cached span generation
 
@@ -75,6 +76,36 @@ The cache compares each block's node with `CmarkNode.contentEquals`. Builders
 in `RenderOptions` are not called for a block that keeps its widget, so their
 output must depend only on the node and on the `cacheKey` argument.
 `CmarkMarkdownColumn` uses a cache.
+
+### Fading in streamed text
+
+Give `CmarkBlockColumn` a `CmarkRevealOptions`, and text that arrives while
+the document streams fades in, character by character:
+
+```dart
+CmarkBlockColumn(
+  theme: theme,
+  reveal: CmarkRevealOptions(
+    streaming: isStreaming,
+    styles: [for (final b in blocks) CmarkRevealStyle.forNode(b.node)],
+  ),
+  children: [for (final b in blocks) b.widget],
+)
+```
+
+Each block gets a `CmarkStreamingReveal`, by its index. The reveal does not
+change the block's widgets: per frame it only paints, with one mask layer for
+each line that is fading. Use it with `repaintBoundaries`, so that a frame of
+the fade paints no text again.
+
+- A chunk that ends in the middle of a word does not restart the fade of that
+  word, and shown text never gets dimmer.
+- Text that arrives while `streaming` is false is shown at once. A fade in
+  progress when streaming ends finishes.
+- A column that is first built while not streaming has no reveals, so
+  finished documents cost nothing extra.
+- Tables, rules and block math fade in as one unit
+  (`CmarkRevealStyle.whole`). So do blocks with right-to-left text.
 
 ## Selection and copying
 

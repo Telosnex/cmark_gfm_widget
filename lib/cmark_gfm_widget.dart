@@ -13,4 +13,5 @@ export 'src/widgets/selection_delegate.dart';
 export 'src/widgets/selection_scope.dart';
 export 'src/widgets/source_aware_widget.dart';
 export 'src/widgets/source_markdown_registry.dart';
+export 'src/widgets/streaming_reveal.dart' hide debugCmarkRevealPaint;
 export 'src/flutter/selection_area.dart';

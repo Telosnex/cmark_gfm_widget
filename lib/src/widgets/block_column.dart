@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import '../theme/cmark_theme.dart';
+import 'streaming_reveal.dart';
 
 /// Lays out the top-level blocks of a document, such as the widgets from
 /// `RenderPipeline.render`.
@@ -8,25 +9,80 @@ import '../theme/cmark_theme.dart';
 /// It puts [CmarkThemeData.blockSpacing] between blocks and none after the
 /// last one. The renderers give a block no space of its own, so use this
 /// widget, or the same spacing, for any column of rendered blocks.
-class CmarkBlockColumn extends StatelessWidget {
+///
+/// With [reveal], content that is added while the document streams fades in.
+/// See [CmarkStreamingReveal].
+class CmarkBlockColumn extends StatefulWidget {
   const CmarkBlockColumn({
     super.key,
     required this.theme,
     required this.children,
+    this.reveal,
   });
 
   /// The theme the blocks were rendered with.
   final CmarkThemeData theme;
 
   /// The rendered blocks, in document order.
+  ///
+  /// With [reveal], each block gets a [CmarkStreamingReveal] by its index.
+  /// Do not key the blocks by content: a reveal keeps its state while its
+  /// block's widget changes.
   final List<Widget> children;
+
+  /// Whether, and how, to fade in streamed content.
+  ///
+  /// A column that is first built while not streaming shows its blocks with
+  /// no reveal, so that a finished document costs nothing. When
+  /// [CmarkRevealOptions.streaming] becomes true, every block gets a reveal.
+  /// The reveals stay after streaming ends, so that a fade in progress
+  /// finishes.
+  ///
+  /// When the reveals are added, the blocks that are there are shown at
+  /// once, except the last one, which may still be streaming. Blocks that
+  /// are added later fade in.
+  final CmarkRevealOptions? reveal;
+
+  @override
+  State<CmarkBlockColumn> createState() => _CmarkBlockColumnState();
+}
+
+class _CmarkBlockColumnState extends State<CmarkBlockColumn> {
+  bool _revealing = false;
+  bool _builtWithReveals = false;
 
   @override
   Widget build(BuildContext context) {
+    final reveal = widget.reveal;
+    if (reveal == null) {
+      _revealing = false;
+    } else if (reveal.streaming) {
+      _revealing = true;
+    }
+    var children = widget.children;
+    if (_revealing && reveal != null) {
+      final animateAll = _builtWithReveals;
+      _builtWithReveals = true;
+      final last = children.length - 1;
+      children = [
+        for (var i = 0; i < children.length; i++)
+          CmarkStreamingReveal(
+            streaming: reveal.streaming,
+            animateIn: animateAll || i == last,
+            style: reveal.styleAt(i),
+            fadeDuration: reveal.fadeDuration,
+            catchUpDuration: reveal.catchUpDuration,
+            minCharactersPerSecond: reveal.minCharactersPerSecond,
+            child: children[i],
+          ),
+      ];
+    } else {
+      _builtWithReveals = false;
+    }
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
-      spacing: theme.blockSpacing,
+      spacing: widget.theme.blockSpacing,
       children: children,
     );
   }

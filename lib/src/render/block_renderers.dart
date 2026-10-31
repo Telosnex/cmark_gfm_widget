@@ -17,10 +17,13 @@ import 'render_pipeline.dart';
 final HighlightAdapter _highlightAdapter = HighlightAdapter();
 
 class BlockRenderResult {
-  BlockRenderResult({required this.id, required this.widget});
+  BlockRenderResult({required this.id, required this.widget, this.node});
 
   final String id;
   final Widget widget;
+
+  /// The top-level block that [widget] shows.
+  final CmarkNode? node;
 }
 
 typedef BlockMathWidgetBuilder = Widget Function(

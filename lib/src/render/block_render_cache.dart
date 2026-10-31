@@ -78,7 +78,7 @@ List<BlockRenderResult> renderTopLevelBlocks(
       entry = _CachedBlock(
         block,
         remainingLeadingSpans,
-        BlockRenderResult(id: id, widget: widget),
+        BlockRenderResult(id: id, widget: widget, node: block),
       );
     }
     // Leading spans only go to the first shown block.
