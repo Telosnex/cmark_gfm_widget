@@ -1,5 +1,5 @@
 name: cmark_gfm_widget
-version: 0.3.0
+version: 0.3.1
 repository: https://github.com/Telosnex/cmark_gfm_widget
 issue_tracker: https://github.com/Telosnex/cmark_gfm_widget/issues
 description: A lightweight Flutter renderer for GitHub Flavored Markdown powered by cmark_gfm_dart.
@@ -16,7 +16,7 @@ dependencies:
   # path. The one theme we used from it is vendored in
   # lib/src/theme/a11y_dark_theme.dart.
   highlight_fork: ^0.7.1
-  pixel_snap_fork: ^0.1.5
+  pixel_snap_fork: '>=0.1.5 <0.3.0'
   flutter_math_fork_fork: ^0.7.3
   vector_math: ^2.2.0
 

@@ -356,10 +356,10 @@ packages:
     dependency: "direct main"
     description:
       name: pixel_snap_fork
-      sha256: "960973ddda08184dfe18f4587273580999deae0b396850c9dd6e92006f730eab"
+      sha256: "3a603b7d9f944334cdac2041430590c60b71c8d09b364dfc5c98285b0d346fcc"
       url: "https://pub.dev"
     source: hosted
-    version: "0.1.5"
+    version: "0.2.0"
   pool:
     dependency: transitive
     description:

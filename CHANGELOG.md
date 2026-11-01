@@ -1,3 +1,7 @@
+## 0.3.1
+
+- Allow pixel_snap_fork 0.2.x as well as 0.1.x.
+
 ## 0.3.0
 
 - Add `CmarkStreamingReveal`, which fades in the text that is added to a
