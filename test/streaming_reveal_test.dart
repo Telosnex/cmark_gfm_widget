@@ -162,6 +162,51 @@ void main() {
       expect(log.single.$2, log.single.$3.toDouble());
     });
 
+    testWidgets(
+        'a list item\'s first line fades in with its marker, not after it',
+        (tester) async {
+      // The marker and the item text are two paragraphs on one line. While
+      // the marker fades, its mask must not hide the item text beside it.
+      final key = GlobalKey();
+      await tester.pumpWidget(_doc('Intro', streaming: true, shotKey: key));
+      await _pumpFrames(tester, 60);
+      final base = await _shot(tester, key);
+      await tester.pumpWidget(
+        _doc('Intro\n\n1. $_sentence', streaming: true, shotKey: key),
+      );
+      final paragraphs = <RenderParagraph>[];
+      void visit(RenderObject o) {
+        if (o is RenderParagraph) paragraphs.add(o);
+        o.visitChildren(visit);
+      }
+
+      visit(tester.renderObject(find.byKey(key)));
+      final item =
+          paragraphs.firstWhere((p) => p.text.toPlainText().startsWith('When'));
+      final itemTop = item.localToGlobal(Offset.zero);
+      final lineHeight =
+          item.getFullHeightForCaret(const TextPosition(offset: 0));
+      final region = Rect.fromLTWH(
+        itemTop.dx,
+        itemTop.dy,
+        item.size.width,
+        lineHeight,
+      );
+      final steps = <int>[];
+      var previous = _newInk(await _shot(tester, key), base, region);
+      for (var i = 0; i < 60; i++) {
+        await tester.pump(_frame);
+        final ink = _newInk(await _shot(tester, key), base, region);
+        steps.add(ink - previous);
+        previous = ink;
+      }
+      final total = steps.fold<int>(0, (a, b) => a + b);
+      expect(total, greaterThan(0));
+      for (final s in steps) {
+        expect(s, lessThan(total * 0.3), reason: 'steps: $steps');
+      }
+    });
+
     testWidgets('a whole block fades in as one unit', (tester) async {
       final log = <(double, double, int)>[];
       await tester.pumpWidget(_doc('Intro', streaming: true));
@@ -264,10 +309,15 @@ Future<void> _pumpFrames(WidgetTester tester, int n) async {
   }
 }
 
-/// Sum of alpha over pixels that were clear in [base].
-int _newInk(Uint8List now, Uint8List base) {
+/// Sum of alpha over pixels that were clear in [base], in [region] if given.
+/// The snapshots are 600 px wide.
+int _newInk(Uint8List now, Uint8List base, [Rect? region]) {
   var sum = 0;
   for (var p = 3; p < now.length; p += 4) {
+    if (region != null) {
+      final i = p ~/ 4;
+      if (!region.contains(Offset(i % 600 + 0.5, i ~/ 600 + 0.5))) continue;
+    }
     if (base[p] == 0) sum += now[p];
   }
   return sum;

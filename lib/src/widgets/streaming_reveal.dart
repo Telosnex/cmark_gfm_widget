@@ -321,7 +321,7 @@ class _Para {
 
 /// The fade on one line, in the reveal's coordinates.
 class _Band {
-  _Band(this.rect, this.xs, this.alphas, this.leftAlpha);
+  _Band(this.rect, this.xs, this.alphas, this.leftAlpha, this.rightAlpha);
 
   final Rect rect;
 
@@ -332,6 +332,11 @@ class _Band {
 
   /// The alpha left of xs.first: earlier text on the same line.
   final double leftAlpha;
+
+  /// The alpha right of xs.last: 0 to hide text after the head, or 1 when
+  /// the head is past this paragraph. Then later text on the line, such as
+  /// a list item beside its marker, has its own band.
+  final double rightAlpha;
 }
 
 class _RenderReveal extends RenderProxyBox {
@@ -487,6 +492,8 @@ class _RenderReveal extends RenderProxyBox {
       if (pStart >= head) break;
       final from = math.max(tail, pStart) - pStart;
       final to = math.min(head, pEnd) - pStart;
+      // The next paragraph starts at pEnd, so it has not started.
+      final hasHead = head <= pEnd;
 
       Offset caret(double local, {bool upstream = false}) {
         final i = local.floor().clamp(0, para.length);
@@ -591,7 +598,9 @@ class _RenderReveal extends RenderProxyBox {
           xs.add(x);
           alphas.add(m.alphaAt(pStart + math.min(pos, pos1 - 1e-6), now));
         }
-        bands.add(_Band(rect, xs, alphas, first ? 1 : alphas.first));
+        bands.add(
+          _Band(rect, xs, alphas, first ? 1 : alphas.first, hasHead ? 0 : 1),
+        );
         clipBottom = math.max(clipBottom, rect.bottom);
       }
     }
@@ -613,7 +622,7 @@ class _RenderReveal extends RenderProxyBox {
         colors.add(white(b.alphas[i]));
         stops.add(math.max(stops.last, f(b.xs[i] + edge)));
       }
-      colors.add(const Color(0x00FFFFFF));
+      colors.add(white(b.rightAlpha));
       stops.add(math.min(1.0, stops.last + 0.5 / w));
       return LinearGradient(colors: colors, stops: stops)
           .createShader(Offset.zero & b.rect.size);
