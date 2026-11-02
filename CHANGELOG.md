@@ -1,3 +1,20 @@
+## 0.3.2
+
+- `CmarkBlockColumn` reveals blocks in reading order. When a chunk adds more
+  than one block, a block starts to fade in when the blocks before it are
+  revealed, so there is one reveal position, not one per block. A reveal
+  that waits does not tick, and the work per frame does not change with the
+  number of blocks.
+- Add `CmarkRevealOrder`, and `CmarkStreamingReveal.order` and `.index`, for
+  reading order in layouts other than `CmarkBlockColumn`.
+- Fix: the first line of a list item no longer stays hidden while its marker
+  fades in, then appears at once.
+- Add `cmarkStreamingParseLength`, and `streaming` on
+  `ParserController.parse` and `.parseChunks`. While a document streams,
+  they leave out an unfinished last line of only `-` or `=`. Under a
+  paragraph, that line makes the paragraph a heading for one chunk, though
+  it is usually the start of a list item.
+
 ## 0.3.1
 
 - Allow pixel_snap_fork 0.2.x as well as 0.1.x.
