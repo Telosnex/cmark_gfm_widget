@@ -77,6 +77,18 @@ in `RenderOptions` are not called for a block that keeps its widget, so their
 output must depend only on the node and on the `cacheKey` argument.
 `CmarkMarkdownColumn` uses a cache.
 
+Parse with `streaming: true` while the document streams:
+
+```dart
+final snapshot = controller.parse(text, streaming: isStreaming);
+```
+
+This leaves out an unfinished last line of only `-` or `=`. Under a
+paragraph, such a line makes the paragraph a heading, but in a reply that
+streams it is usually the start of a list item. Without this, the paragraph
+shows as a heading for one chunk. If you feed a `CmarkParser` yourself, feed
+it the first `cmarkStreamingParseLength(text)` characters.
+
 ### Fading in streamed text
 
 Give `CmarkBlockColumn` a `CmarkRevealOptions`, and text that arrives while
