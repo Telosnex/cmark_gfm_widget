@@ -10,8 +10,8 @@ import 'streaming_reveal.dart';
 /// last one. The renderers give a block no space of its own, so use this
 /// widget, or the same spacing, for any column of rendered blocks.
 ///
-/// With [reveal], content that is added while the document streams fades in.
-/// See [CmarkStreamingReveal].
+/// With [reveal], content that is added while the document streams fades in,
+/// in reading order. See [CmarkStreamingReveal] and [CmarkRevealOrder].
 class CmarkBlockColumn extends StatefulWidget {
   const CmarkBlockColumn({
     super.key,
@@ -41,6 +41,9 @@ class CmarkBlockColumn extends StatefulWidget {
   /// When the reveals are added, the blocks that are there are shown at
   /// once, except the last one, which may still be streaming. Blocks that
   /// are added later fade in.
+  ///
+  /// The reveals share one [CmarkRevealOrder]: a block starts to fade in
+  /// when the blocks before it are revealed.
   final CmarkRevealOptions? reveal;
 
   @override
@@ -48,6 +51,7 @@ class CmarkBlockColumn extends StatefulWidget {
 }
 
 class _CmarkBlockColumnState extends State<CmarkBlockColumn> {
+  final _order = CmarkRevealOrder();
   bool _revealing = false;
   bool _builtWithReveals = false;
 
@@ -73,6 +77,8 @@ class _CmarkBlockColumnState extends State<CmarkBlockColumn> {
             fadeDuration: reveal.fadeDuration,
             catchUpDuration: reveal.catchUpDuration,
             minCharactersPerSecond: reveal.minCharactersPerSecond,
+            order: _order,
+            index: i,
             child: children[i],
           ),
       ];

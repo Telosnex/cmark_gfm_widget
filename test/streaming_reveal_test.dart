@@ -266,6 +266,91 @@ void main() {
       expect(log.last.$3, 'Second'.length);
     });
 
+    testWidgets('blocks in one chunk are revealed in reading order',
+        (tester) async {
+      await tester.pumpWidget(_doc('First', streaming: true));
+      await _pumpFrames(tester, 60);
+      const first = 'First block, which gets longer.';
+      const second = 'Second block.';
+      final heads = <int, double>{first.length: 0, second.length: 0};
+      final order = <String>[];
+      debugCmarkRevealPaint = (h, t, n) {
+        if (n == second.length && h > 0) {
+          expect(heads[first.length], first.length.toDouble());
+        }
+        if (n == first.length && h >= n && !order.contains('first')) {
+          order.add('first');
+        }
+        if (n == second.length && h >= n && !order.contains('second')) {
+          order.add('second');
+        }
+        heads[n] = h;
+      };
+      await tester.pumpWidget(_doc('$first\n\n$second', streaming: true));
+      await _pumpFrames(tester, 3);
+      // The waiting reveal does not tick.
+      expect(tester.binding.transientCallbackCount, 1);
+      // One position for both blocks: about the catch-up time, not twice it.
+      await _pumpFrames(tester, 20);
+      expect(order, ['first', 'second']);
+      await _pumpFrames(tester, 40);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+    });
+
+    testWidgets('a waiting reveal continues when the one before it shrinks',
+        (tester) async {
+      final order = CmarkRevealOrder();
+      await tester.pumpWidget(_ordered(order, ['x']));
+      await _pumpFrames(tester, 60);
+      final heads = <int, double>{};
+      debugCmarkRevealPaint = (h, t, n) => heads[n] = h;
+      // The first block gets a lot of text. The second block waits for it.
+      await tester.pumpWidget(_ordered(order, ['x' * 400, 'second']));
+      await _pumpFrames(tester, 3);
+      expect(heads[6], 0);
+      // The first block's text gets shorter than its reveal position, so it
+      // is revealed in layout, not in a tick.
+      await tester.pumpWidget(_ordered(order, ['x' * 5, 'second']));
+      await _pumpFrames(tester, 60);
+      expect(heads[6], 6);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+    });
+
+    testWidgets('a waiting reveal continues when the one before it is removed',
+        (tester) async {
+      final order = CmarkRevealOrder();
+      await tester.pumpWidget(_ordered(order, ['x']));
+      await _pumpFrames(tester, 60);
+      final heads = <int, double>{};
+      debugCmarkRevealPaint = (h, t, n) => heads[n] = h;
+      await tester.pumpWidget(
+        _ordered(order, ['x' * 400, 'second'], keys: ['a', 'b']),
+      );
+      await _pumpFrames(tester, 3);
+      expect(heads[6], 0);
+      // Remove the first block. The second keeps its state and index 1.
+      await tester.pumpWidget(
+        _ordered(order, ['second'], keys: ['b'], firstIndex: 1),
+      );
+      await _pumpFrames(tester, 60);
+      expect(heads[6], 6);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+    });
+
+    testWidgets('reveals with the same index do not wait for each other',
+        (tester) async {
+      final order = CmarkRevealOrder();
+      await tester.pumpWidget(_ordered(order, ['x']));
+      await _pumpFrames(tester, 60);
+      final heads = <int, double>{};
+      debugCmarkRevealPaint = (h, t, n) => heads[n] = h;
+      await tester.pumpWidget(
+        _ordered(order, ['x' * 400, 'second'], sameIndex: true),
+      );
+      await _pumpFrames(tester, 3);
+      expect(heads[6], greaterThan(0));
+    });
+
     testWidgets('reveals stay after streaming ends', (tester) async {
       await tester.pumpWidget(_doc('One\n\nTwo', streaming: true));
       await tester.pumpWidget(_doc('One\n\nTwo', streaming: false));
@@ -348,6 +433,32 @@ List<T> _layersOf<T extends Layer>(WidgetTester tester) {
 
   visit(tester.binding.renderViews.first.debugLayer);
   return out;
+}
+
+/// Reveals of [blocks] in [order], with index [firstIndex] + i, or all with
+/// index 0 if [sameIndex].
+Widget _ordered(
+  CmarkRevealOrder order,
+  List<String> blocks, {
+  List<String>? keys,
+  int firstIndex = 0,
+  bool sameIndex = false,
+}) {
+  return Directionality(
+    textDirection: TextDirection.ltr,
+    child: Column(
+      children: [
+        for (var i = 0; i < blocks.length; i++)
+          CmarkStreamingReveal(
+            key: keys == null ? null : ValueKey(keys[i]),
+            streaming: true,
+            order: order,
+            index: sameIndex ? 0 : firstIndex + i,
+            child: Text(blocks[i]),
+          ),
+      ],
+    ),
+  );
 }
 
 Widget _doc(

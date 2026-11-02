@@ -68,6 +68,69 @@ class CmarkRevealOptions {
       index < styles.length ? styles[index] : CmarkRevealStyle.lines;
 }
 
+/// Makes the reveals of a column go in reading order.
+///
+/// Give one order to the reveals of all blocks in a column, each with its
+/// block's index. A reveal then waits until the reveals with a lower index
+/// have revealed all their text, so a chunk that adds two paragraphs shows
+/// one reveal position that goes through the first and then the second. The
+/// position's speed is for the text not revealed yet in all the reveals.
+///
+/// Reveals with the same index do not wait for each other.
+///
+/// The order only keeps the reveals that have text not revealed yet, so the
+/// work per frame does not change with the number of blocks.
+///
+/// `CmarkBlockColumn` makes one for its reveals.
+final class CmarkRevealOrder {
+  /// The reveals that have text not revealed yet.
+  final List<_RevealModel> _pending = [];
+
+  /// True while a reveal with a lower index than [model] has text that is
+  /// not revealed.
+  bool _blocked(_RevealModel model) {
+    for (final m in _pending) {
+      if (m.index < model.index) return true;
+    }
+    return false;
+  }
+
+  /// The characters not revealed yet, in all reveals.
+  double get _backlog {
+    var backlog = 0.0;
+    for (final m in _pending) {
+      backlog += m.target - m.head;
+    }
+    return backlog;
+  }
+
+  /// Adds or removes [model] from the pending reveals, after its head,
+  /// target or index changed. When the pending reveals change, the waiting
+  /// ones start again, so a reveal that is no longer blocked continues.
+  void _update(_RevealModel model) {
+    final pending = model.head < model.target;
+    final i = _pending.indexOf(model);
+    if (pending && i < 0) {
+      _pending.add(model);
+    } else if (!pending && i >= 0) {
+      _pending.removeAt(i);
+      _wake();
+    }
+  }
+
+  void _remove(_RevealModel model) {
+    if (_pending.remove(model)) _wake();
+  }
+
+  /// Starts the pending reveals. A reveal that is still blocked stops again
+  /// on its next tick.
+  void _wake() {
+    for (final m in List.of(_pending)) {
+      m.onNeedsTicking?.call();
+    }
+  }
+}
+
 /// Fades in the content that is added to [child] while a document streams.
 ///
 /// Put one around each top-level block. The reveal does not change the
@@ -94,6 +157,8 @@ class CmarkStreamingReveal extends StatefulWidget {
     this.fadeDuration = defaultFadeDuration,
     this.catchUpDuration = defaultCatchUpDuration,
     this.minCharactersPerSecond = defaultMinCharactersPerSecond,
+    this.order,
+    this.index = 0,
   });
 
   static const defaultFadeDuration = Duration(milliseconds: 280);
@@ -126,6 +191,13 @@ class CmarkStreamingReveal extends StatefulWidget {
   /// The lowest speed of the reveal position.
   final double minCharactersPerSecond;
 
+  /// If not null, this reveal waits for the reveals in [order] with a lower
+  /// [index]. See [CmarkRevealOrder].
+  final CmarkRevealOrder? order;
+
+  /// This reveal's place in [order].
+  final int index;
+
   final Widget child;
 
   @override
@@ -154,13 +226,25 @@ class _CmarkStreamingRevealState extends State<CmarkStreamingReveal>
     super.initState();
     _model
       ..snapNextLayout = !widget.animateIn || !widget.streaming
-      ..onNeedsTicking = _ensureTicking;
+      ..onNeedsTicking = _ensureTicking
+      ..order = widget.order
+      ..index = widget.index;
     _sync();
   }
 
   @override
   void didUpdateWidget(CmarkStreamingReveal oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.order != oldWidget.order) {
+      oldWidget.order?._remove(_model);
+      _model.order = widget.order;
+    }
+    if (widget.index != _model.index) {
+      _model.index = widget.index;
+      // Reveals that waited for this one may not wait now.
+      widget.order?._remove(_model);
+    }
+    _model.updateOrder();
     _sync();
   }
 
@@ -185,20 +269,30 @@ class _CmarkStreamingRevealState extends State<CmarkStreamingReveal>
     // Record the position at the last tick, so the history shows it standing
     // still until then, not moving since the last sample.
     m.record(now - dt);
+    final order = widget.order;
+    final blocked = order != null && order._blocked(m);
     final backlog = m.target - m.head;
-    if (backlog > 0) {
+    if (backlog > 0 && !blocked) {
       var catchUp = math.max(1e-3, _seconds(widget.catchUpDuration));
       if (!widget.streaming) catchUp /= 2;
-      final speed = math.max(widget.minCharactersPerSecond, backlog / catchUp);
+      final speed = math.max(
+        widget.minCharactersPerSecond,
+        (order?._backlog ?? backlog) / catchUp,
+      );
       m.head = math.min(m.target.toDouble(), m.head + speed * dt);
+      m.updateOrder();
     }
     m.record(now);
-    if (m.tailAt(now) >= m.target) _ticker.stop();
+    final tail = m.tailAt(now);
+    // A waiting reveal stops when its revealed text is opaque. The order
+    // starts it again.
+    if (tail >= m.target || (blocked && tail >= m.head)) _ticker.stop();
     m.notifyListeners();
   }
 
   @override
   void dispose() {
+    widget.order?._remove(_model);
     _ticker.dispose();
     _model.dispose();
     super.dispose();
@@ -226,6 +320,13 @@ class _RevealModel extends ChangeNotifier {
   bool snapNextLayout = false;
   double fadeSeconds = 0.28;
   VoidCallback? onNeedsTicking;
+
+  /// The reading order this reveal is in, and its place in it.
+  CmarkRevealOrder? order;
+  int index = 0;
+
+  /// Tells [order] that [head] or [target] changed.
+  void updateOrder() => order?._update(this);
 
   /// (time, head) samples, oldest first. One sample at or before
   /// now - fadeSeconds is kept for interpolation.
@@ -428,6 +529,9 @@ class _RenderReveal extends RenderProxyBox {
     }
     if (m.head > target) m.snapTo(target.toDouble());
     m.target = target;
+    // Also when the block was revealed at once here, for example because its
+    // text got shorter: the reveals after it may wait for it.
+    m.updateOrder();
     if (m.tailAt(now) < target) m.onNeedsTicking?.call();
   }
 

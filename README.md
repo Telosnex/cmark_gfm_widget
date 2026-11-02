@@ -98,6 +98,10 @@ change the block's widgets: per frame it only paints, with one mask layer for
 each line that is fading. Use it with `repaintBoundaries`, so that a frame of
 the fade paints no text again.
 
+- The blocks fade in in reading order. When a chunk adds more than one block,
+  a block starts when the blocks before it are revealed. To do the same
+  outside the column, give your reveals one `CmarkRevealOrder` and each its
+  block's index.
 - A chunk that ends in the middle of a word does not restart the fade of that
   word, and shown text never gets dimmer.
 - Text that arrives while `streaming` is false is shown at once. A fade in
