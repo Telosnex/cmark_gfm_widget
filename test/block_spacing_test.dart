@@ -8,12 +8,18 @@ import 'package:pixel_snap_fork/material.dart';
 
 const _spacing = 10.0;
 const _listItemSpacing = 6.0;
+const _listItemBlockSpacing = 4.0;
+const _before = 20.0;
+const _after = 3.0;
 
-CmarkThemeData _theme() {
+CmarkThemeData _theme({bool headingSpacing = false}) {
   final base = CmarkThemeData.fallback(Typography.englishLike2021);
   return base.copyWith(
     blockSpacing: _spacing,
+    headingSpacingBefore: headingSpacing ? _before : null,
+    headingSpacingAfter: headingSpacing ? _after : null,
     listItemSpacing: _listItemSpacing,
+    listItemBlockSpacing: headingSpacing ? _listItemBlockSpacing : null,
     blockQuotePadding: EdgeInsets.zero,
     codeBlockPadding: EdgeInsets.zero,
     orderedListBulletTextStyle: base.paragraphTextStyle,
@@ -25,13 +31,14 @@ Future<double> _pumpHeight(
   WidgetTester tester,
   String markdown, {
   bool selectable = false,
+  bool headingSpacing = false,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
         body: SingleChildScrollView(
           child: CmarkTheme(
-            data: _theme(),
+            data: _theme(headingSpacing: headingSpacing),
             child: CmarkMarkdownColumn(
               data: markdown,
               selectable: selectable,
@@ -54,6 +61,10 @@ double _textHeight(WidgetTester tester, String text) {
   expect(matches, hasLength(1), reason: 'one paragraph with "$text"');
   return matches.single.size.height;
 }
+
+/// Sum of the heights of the paragraphs with [texts].
+double _textsHeight(WidgetTester tester, List<String> texts) =>
+    texts.map((t) => _textHeight(tester, t)).reduce((a, b) => a + b);
 
 void main() {
   for (final selectable in [false, true]) {
@@ -147,5 +158,101 @@ void main() {
         );
       });
     });
+
+    group('heading spacing, selectable: $selectable', () {
+      Future<double> pump(WidgetTester tester, String markdown) => _pumpHeight(
+            tester,
+            markdown,
+            selectable: selectable,
+            headingSpacing: true,
+          );
+
+      testWidgets('goes above and below a heading', (tester) async {
+        final height = await pump(tester, 'alpha\n\n# beta\n\ngamma');
+        expect(
+          height,
+          _textsHeight(tester, ['alpha', 'beta', 'gamma']) + _before + _after,
+        );
+      });
+
+      testWidgets('a first heading has no space above it', (tester) async {
+        final height = await pump(tester, '# alpha\n\nbeta');
+        expect(height, _textsHeight(tester, ['alpha', 'beta']) + _after);
+      });
+
+      testWidgets('a last heading has no space below it', (tester) async {
+        final height = await pump(tester, 'alpha\n\n# beta');
+        expect(height, _textsHeight(tester, ['alpha', 'beta']) + _before);
+      });
+
+      testWidgets('two headings take the larger space', (tester) async {
+        final height = await pump(tester, '# alpha\n## beta');
+        expect(height, _textsHeight(tester, ['alpha', 'beta']) + _before);
+      });
+
+      testWidgets('other blocks keep block spacing', (tester) async {
+        final height = await pump(tester, 'alpha\n\nbeta');
+        expect(height, _textsHeight(tester, ['alpha', 'beta']) + _spacing);
+      });
+
+      testWidgets('applies in a quote', (tester) async {
+        final height = await pump(tester, '> alpha\n>\n> # beta\n>\n> gamma');
+        expect(
+          height,
+          _textsHeight(tester, ['alpha', 'beta', 'gamma']) + _before + _after,
+        );
+      });
+
+      testWidgets('applies in a list item', (tester) async {
+        final height = await pump(tester, '- alpha\n\n  # beta\n\n  gamma');
+        expect(
+          height,
+          _textsHeight(tester, ['alpha', 'beta', 'gamma']) + _before + _after,
+        );
+      });
+
+      testWidgets('list items keep list item block spacing', (tester) async {
+        final height = await pump(tester, '- alpha\n\n  beta');
+        expect(
+          height,
+          _textsHeight(tester, ['alpha', 'beta']) + _listItemBlockSpacing,
+        );
+      });
+    });
   }
+
+  testWidgets('CmarkBlockColumn without nodes uses block spacing', (
+    tester,
+  ) async {
+    final theme = _theme(headingSpacing: true);
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: CmarkBlockColumn(
+            theme: theme,
+            children: const [
+              SizedBox(height: 7, width: 1),
+              SizedBox(height: 7, width: 1),
+            ],
+          ),
+        ),
+      ),
+    );
+    expect(tester.getSize(find.byType(CmarkBlockColumn)).height, 14 + _spacing);
+  });
+
+  test('spacingBetween', () {
+    final theme = _theme(headingSpacing: true);
+    final doc = ParserController().parse('a\n\n# h\n\nb').blocks.toList();
+    final (paragraph, heading) = (doc[0], doc[1]);
+    expect(theme.spacingBetween(paragraph, heading, 1), _before);
+    expect(theme.spacingBetween(heading, paragraph, 1), _after);
+    expect(theme.spacingBetween(paragraph, paragraph, 1), 1);
+    expect(theme.spacingBetween(null, null, 1), 1);
+    final unset = _theme();
+    expect(unset.spacingBetween(paragraph, heading, 1), 1);
+    expect(unset.hasHeadingSpacing, isFalse);
+  });
 }

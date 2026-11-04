@@ -1,3 +1,4 @@
+import 'package:cmark_gfm_dart/cmark_gfm_dart.dart';
 import 'package:pixel_snap_fork/material.dart';
 import 'a11y_dark_theme.dart' as highlight_theme;
 
@@ -63,6 +64,8 @@ class CmarkThemeData {
     required this.thematicBreakThickness,
     required this.thematicBreakVerticalPadding,
     required this.blockSpacing,
+    this.headingSpacingBefore,
+    this.headingSpacingAfter,
     required this.blockQuoteBackgroundColor,
     required this.blockQuoteBorderColor,
     required this.blockQuotePadding,
@@ -119,6 +122,44 @@ class CmarkThemeData {
   /// The space goes only between blocks. A block that is alone, or last in
   /// its document, quote or list item, has no space after it.
   final double blockSpacing;
+
+  /// Vertical space above a heading that follows another block. Null uses
+  /// the spacing of the heading's container.
+  ///
+  /// It applies in every container: the document, quotes, list items and
+  /// footnotes. A heading that is first in its container has no space
+  /// above it. See [spacingBetween].
+  final double? headingSpacingBefore;
+
+  /// Vertical space below a heading that another block follows. Null uses
+  /// the spacing of the heading's container.
+  ///
+  /// Make it smaller than [headingSpacingBefore], so a heading groups with
+  /// the text it introduces. See [spacingBetween].
+  final double? headingSpacingAfter;
+
+  /// Whether a heading changes the spacing of its container.
+  bool get hasHeadingSpacing =>
+      headingSpacingBefore != null || headingSpacingAfter != null;
+
+  /// Vertical space between the sibling blocks [above] and [below], in a
+  /// container that puts [spacing] between other blocks.
+  ///
+  /// Above a heading is [headingSpacingBefore] and below one is
+  /// [headingSpacingAfter]. Between two headings, the larger of the two
+  /// applies, as CSS margins collapse. Unset values are [spacing].
+  double spacingBetween(CmarkNode? above, CmarkNode? below, double spacing) {
+    final afterAbove = _isHeading(above) ? headingSpacingAfter : null;
+    final beforeBelow = _isHeading(below) ? headingSpacingBefore : null;
+    if (afterAbove != null && beforeBelow != null) {
+      return afterAbove > beforeBelow ? afterAbove : beforeBelow;
+    }
+    return beforeBelow ?? afterAbove ?? spacing;
+  }
+
+  static bool _isHeading(CmarkNode? node) =>
+      node?.type == CmarkNodeType.heading;
+
   final Color blockQuoteBackgroundColor;
   final Color blockQuoteBorderColor;
   final EdgeInsets blockQuotePadding;
@@ -172,6 +213,8 @@ class CmarkThemeData {
     double? thematicBreakThickness,
     double? thematicBreakVerticalPadding,
     double? blockSpacing,
+    double? headingSpacingBefore,
+    double? headingSpacingAfter,
     Color? blockQuoteBackgroundColor,
     Color? blockQuoteBorderColor,
     EdgeInsets? blockQuotePadding,
@@ -210,6 +253,8 @@ class CmarkThemeData {
       thematicBreakVerticalPadding:
           thematicBreakVerticalPadding ?? this.thematicBreakVerticalPadding,
       blockSpacing: blockSpacing ?? this.blockSpacing,
+      headingSpacingBefore: headingSpacingBefore ?? this.headingSpacingBefore,
+      headingSpacingAfter: headingSpacingAfter ?? this.headingSpacingAfter,
       blockQuoteBackgroundColor:
           blockQuoteBackgroundColor ?? this.blockQuoteBackgroundColor,
       blockQuoteBorderColor:

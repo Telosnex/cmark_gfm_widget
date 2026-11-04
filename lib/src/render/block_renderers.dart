@@ -10,6 +10,7 @@ import '../theme/cmark_theme.dart';
 import '../highlight/highlight_adapter.dart';
 import '../widgets/source_aware_widget.dart';
 import 'block_render_cache.dart';
+import 'block_spacing.dart';
 import 'inline_renderers.dart';
 import 'math_parser_settings.dart';
 import 'render_pipeline.dart';
@@ -177,19 +178,12 @@ Widget? _renderCompositeBlock(
   BlockRenderContext context, {
   required int listLevel,
 }) {
-  final children = <Widget>[];
-  var child = node.firstChild;
-  while (child != null) {
-    final rendered = _renderBlock(child, context, listLevel: listLevel);
-    if (rendered != null) {
-      children.add(rendered);
-    }
-    child = child.next;
-  }
-  if (children.isEmpty) {
-    return null;
-  }
-  return _blockColumn(children, _childBlockSpacing(context, listLevel));
+  return _childBlockColumn(
+    node,
+    context,
+    listLevel: listLevel,
+    spacing: _childBlockSpacing(context, listLevel),
+  );
 }
 
 Widget _buildTextualBlock(
@@ -250,16 +244,12 @@ Widget _buildBlockQuote(
   BlockRenderContext context, {
   required int listLevel,
 }) {
-  final children = <Widget>[];
-  var child = node.firstChild;
-  while (child != null) {
-    final rendered = _renderBlock(child, context, listLevel: listLevel);
-    if (rendered != null) {
-      children.add(rendered);
-    }
-    child = child.next;
-  }
-
+  final column = _childBlockColumn(
+    node,
+    context,
+    listLevel: listLevel,
+    spacing: _childBlockSpacing(context, listLevel),
+  );
   return Container(
     decoration: BoxDecoration(
       color: context.theme.blockQuoteBackgroundColor,
@@ -268,7 +258,7 @@ Widget _buildBlockQuote(
       ),
     ),
     padding: context.theme.blockQuotePadding,
-    child: _blockColumn(children, _childBlockSpacing(context, listLevel)),
+    child: column ?? _blockColumn(const [], 0),
   );
 }
 
@@ -407,16 +397,13 @@ Widget _buildListItem(
   required List<InlineSpan> leadingSpansBeforeMarker,
 }) {
   final bulletText = ordered ? '$index. ' : '\u2022 ';
-  final children = <Widget>[];
-  var child = item.firstChild;
-  while (child != null) {
-    final rendered = _renderBlock(child, context, listLevel: level);
-    if (rendered != null) {
-      children.add(rendered);
-    }
-    child = child.next;
-  }
-  final column = _blockColumn(children, context.theme.listItemBlockSpacing);
+  final column = _childBlockColumn(
+        item,
+        context,
+        listLevel: level,
+        spacing: context.theme.listItemBlockSpacing,
+      ) ??
+      _blockColumn(const [], 0);
 
   final resolvedLevel = level < 1 ? 1 : level;
 
@@ -686,22 +673,19 @@ Widget? _buildFootnoteDefinition(
   // No widget, not an empty one: an empty block would still get spacing.
   if (!context.renderFootnoteDefinitions) return null;
   final label = node.footnoteReferenceIndex;
-  final children = <Widget>[];
-  var child = node.firstChild;
-  while (child != null) {
-    final rendered = _renderBlock(child, context, listLevel: listLevel);
-    if (rendered != null) {
-      children.add(rendered);
-    }
-    child = child.next;
-  }
+  final column = _childBlockColumn(
+    node,
+    context,
+    listLevel: listLevel,
+    spacing: _childBlockSpacing(context, listLevel),
+  );
   return Row(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       Text('[$label]', style: context.theme.footnoteLabelTextStyle),
       const SizedBox(width: 8),
       Expanded(
-        child: _blockColumn(children, _childBlockSpacing(context, listLevel)),
+        child: column ?? _blockColumn(const [], 0),
       ),
     ],
   );
@@ -739,6 +723,35 @@ Widget _blockColumn(List<Widget> children, double spacing) {
     crossAxisAlignment: CrossAxisAlignment.start,
     spacing: spacing,
     children: children,
+  );
+}
+
+/// Renders the child blocks of [node] in a column, with [spacing] and the
+/// theme's heading spacing between them. Null when no child shows anything;
+/// callers that need a widget use an empty column, as before.
+Widget? _childBlockColumn(
+  CmarkNode node,
+  BlockRenderContext context, {
+  required int listLevel,
+  required double spacing,
+}) {
+  final children = <Widget>[];
+  final nodes = <CmarkNode>[];
+  var child = node.firstChild;
+  while (child != null) {
+    final rendered = _renderBlock(child, context, listLevel: listLevel);
+    if (rendered != null) {
+      children.add(rendered);
+      nodes.add(child);
+    }
+    child = child.next;
+  }
+  if (children.isEmpty) return null;
+  return spacedBlockColumn(
+    theme: context.theme,
+    children: children,
+    nodes: nodes,
+    spacing: spacing,
   );
 }
 

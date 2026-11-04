@@ -1,5 +1,7 @@
+import 'package:cmark_gfm_dart/cmark_gfm_dart.dart';
 import 'package:flutter/widgets.dart';
 
+import '../render/block_spacing.dart';
 import '../theme/cmark_theme.dart';
 import 'streaming_reveal.dart';
 
@@ -7,8 +9,10 @@ import 'streaming_reveal.dart';
 /// `RenderPipeline.render`.
 ///
 /// It puts [CmarkThemeData.blockSpacing] between blocks and none after the
-/// last one. The renderers give a block no space of its own, so use this
-/// widget, or the same spacing, for any column of rendered blocks.
+/// last one. With [nodes], the space around a heading follows the theme's
+/// heading spacing; see [CmarkThemeData.spacingBetween]. The renderers give
+/// a block no space of its own, so use this widget, or the same spacing,
+/// for any column of rendered blocks.
 ///
 /// With [reveal], content that is added while the document streams fades in,
 /// in reading order. See [CmarkStreamingReveal] and [CmarkRevealOrder].
@@ -17,8 +21,9 @@ class CmarkBlockColumn extends StatefulWidget {
     super.key,
     required this.theme,
     required this.children,
+    this.nodes,
     this.reveal,
-  });
+  }) : assert(nodes == null || nodes.length == children.length);
 
   /// The theme the blocks were rendered with.
   final CmarkThemeData theme;
@@ -29,6 +34,11 @@ class CmarkBlockColumn extends StatefulWidget {
   /// Do not key the blocks by content: a reveal keeps its state while its
   /// block's widget changes.
   final List<Widget> children;
+
+  /// The top-level node of each of [children], such as
+  /// `BlockRenderResult.node`. Without it, the theme's heading spacing is
+  /// not used: every gap is [CmarkThemeData.blockSpacing].
+  final List<CmarkNode?>? nodes;
 
   /// Whether, and how, to fade in streamed content.
   ///
@@ -85,11 +95,11 @@ class _CmarkBlockColumnState extends State<CmarkBlockColumn> {
     } else {
       _builtWithReveals = false;
     }
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      spacing: widget.theme.blockSpacing,
+    return spacedBlockColumn(
+      theme: widget.theme,
       children: children,
+      nodes: widget.nodes,
+      spacing: widget.theme.blockSpacing,
     );
   }
 }

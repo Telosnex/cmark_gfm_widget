@@ -1,3 +1,13 @@
+## 0.3.3
+
+- Add `CmarkThemeData.headingSpacingBefore` and `.headingSpacingAfter`.
+  They set the space above and below a heading in every container, so a
+  heading can group with the text after it. Between two headings, the
+  larger applies. Unset, a heading gets its container's spacing, as before.
+- Add `CmarkThemeData.spacingBetween`, the space between two sibling blocks.
+- Add `CmarkBlockColumn.nodes`. With it, the column uses heading spacing.
+  `CmarkMarkdownColumn` passes it.
+
 ## 0.3.2
 
 - `CmarkBlockColumn` reveals blocks in reading order. When a chunk adds more

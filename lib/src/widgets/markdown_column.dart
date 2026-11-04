@@ -162,14 +162,21 @@ class _CmarkMarkdownColumnState extends State<CmarkMarkdownColumn> {
       renderImages: widget.renderImages,
     );
 
-    final children = _pipeline.buildWidgets(
+    final results = _pipeline.render(
       snapshot,
       theme,
       options,
       cache: _renderCache,
     );
 
-    final column = CmarkBlockColumn(theme: theme, children: children);
+    final column = CmarkBlockColumn(
+      theme: theme,
+      nodes: [for (final result in results) result.node],
+      children: [
+        for (final result in results)
+          KeyedSubtree(key: ValueKey<String>(result.id), child: result.widget),
+      ],
+    );
 
     // Use SelectionArea to enable cross-block selection
     final content = widget.selectable
