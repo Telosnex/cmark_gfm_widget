@@ -242,19 +242,18 @@ class HighlightAdapter extends ChangeNotifier {
     try {
       HighlightScopeRuns runs;
       try {
-        if (hook != null) {
-          // Even a synchronously throwing hook must not notify during build.
-          runs = await Future<HighlightScopeRuns>.sync(
-            () => hook(text, language ?? ''),
-          );
-        } else if (kIsWeb) {
-          runs = await SchedulerBinding.instance.scheduleTask(
-            () => highlightScopeRuns(text, language ?? ''),
-            Priority.idle,
-          );
-        } else {
-          runs = await _highlightInIsolate(text, language ?? '');
-        }
+        // Dispatch itself can throw (for example, a missing scheduler binding).
+        // Always cross an async boundary before fallback or notification.
+        runs = await Future<HighlightScopeRuns>.sync(() {
+          if (hook != null) return hook(text, language ?? '');
+          if (kIsWeb) {
+            return SchedulerBinding.instance.scheduleTask(
+              () => highlightScopeRuns(text, language ?? ''),
+              Priority.idle,
+            );
+          }
+          return _highlightInIsolate(text, language ?? '');
+        });
       } catch (_) {
         if (_disposed || (tracked && !_activeRequests.containsValue(key))) {
           if (identical(_cache[key], provisional)) _cache.remove(key);

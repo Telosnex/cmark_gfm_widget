@@ -1,3 +1,9 @@
+## 0.4.1
+
+- Keep full-highlight dispatch failures asynchronous so fallback parsing never
+  notifies listeners during a build.
+- Make completion and disposal regression tests deterministic on web and native.
+
 ## 0.4.0
 
 - Upgrade to highlight_fork 0.8.0 and the highlight.js 11 token API.

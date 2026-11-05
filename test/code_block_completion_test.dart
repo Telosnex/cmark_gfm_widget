@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cmark_gfm_dart/cmark_gfm_dart.dart';
 import 'package:cmark_gfm_widget/cmark_gfm_widget.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -83,12 +85,20 @@ void main() {
   testWidgets('large final correction rebuilds mounted cached code only',
       (tester) async {
     final controller = ParserController();
+    final pending = <(String, String, Completer<HighlightScopeRuns>)>[];
     final theme = CmarkThemeData.fallback(ThemeData().textTheme).copyWith(
-      codeHighlightTheme: const CodeHighlightTheme(theme: {
-        'root': TextStyle(color: Color(0xFF222222)),
-        'title': TextStyle(color: Color(0xFFFF0000)),
-        'title.function': TextStyle(color: Color(0xFFFF0000)),
-      }),
+      codeHighlightTheme: CodeHighlightTheme(
+        theme: const {
+          'root': TextStyle(color: Color(0xFF222222)),
+          'title': TextStyle(color: Color(0xFFFF0000)),
+          'title.function': TextStyle(color: Color(0xFFFF0000)),
+        },
+        highlightOffload: (code, language) {
+          final completion = Completer<HighlightScopeRuns>();
+          pending.add((code, language, completion));
+          return completion.future;
+        },
+      ),
     );
     final source = '```js\nhello\n()\n${'// padding\n' * 500}';
     final cache = BlockRenderCache();
@@ -117,17 +127,13 @@ void main() {
         .text
         .toStringDeep();
     final provisional = firstLine();
-    var corrected = false;
-    for (var attempt = 0; attempt < 100; attempt++) {
-      await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 20)));
-      await tester.pump();
-      if (firstLine() != provisional) {
-        corrected = true;
-        break;
-      }
-    }
-    expect(corrected, isTrue);
+    // Hold the correction until provisional spans have been observed. Web idle
+    // tasks can otherwise finish during pumpWidget, unlike native isolates.
+    expect(pending, hasLength(1));
+    final (code, language, completion) = pending.single;
+    completion.complete(highlightScopeRuns(code, language));
+    await tester.pump();
+    expect(firstLine(), isNot(provisional));
     // No parent/pipeline render was needed to replace the provisional spans.
     expect(tester.takeException(), isNull);
 
@@ -140,8 +146,9 @@ void main() {
       home: SingleChildScrollView(child: other.single.widget),
     ));
     await tester.pumpWidget(const MaterialApp(home: SizedBox()));
-    await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 300)));
+    expect(pending, hasLength(2));
+    final (otherCode, otherLanguage, otherCompletion) = pending.last;
+    otherCompletion.complete(highlightScopeRuns(otherCode, otherLanguage));
     await tester.pump();
     expect(tester.takeException(), isNull);
   });

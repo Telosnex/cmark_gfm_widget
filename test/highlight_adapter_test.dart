@@ -120,6 +120,7 @@ List<(String, TextStyle?)> _fullParseCharacters(String code, String language) {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   const dartCode = '''
 /// Doc comment.
 class Foo {
