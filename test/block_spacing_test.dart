@@ -291,6 +291,47 @@ void main() {
     final item = _rect(tester, 'alpha');
     expect(item.top - lead.bottom, 2);
   });
+
+  group('in a tight list item', () {
+    Future<double> gap(
+        WidgetTester tester, String md, String a, String b) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: CmarkTheme(
+              data: _theme(headingSpacing: true).copyWith(leadInSpacing: 2),
+              child: CmarkMarkdownColumn(data: md),
+            ),
+          ),
+        ),
+      );
+      return _rect(tester, b).top - _rect(tester, a).bottom;
+    }
+
+    testWidgets('a sublist sits right under its text', (tester) async {
+      expect(await gap(tester, '- parent\n  - child', 'parent', 'child'), 0);
+      expect(await gap(tester, '- run:\n  - child', 'run:', 'child'), 0);
+    });
+
+    testWidgets('the next item sits right under a sublist', (tester) async {
+      const md = '- parent\n  - child\n- next';
+      expect(await gap(tester, md, 'child', 'next'), 0);
+    });
+
+    testWidgets('a code block keeps its spacing', (tester) async {
+      const md = '- run:\n  ```\n  code\n  ```';
+      expect(await gap(tester, md, 'run:', 'code'), greaterThan(0));
+    });
+
+    testWidgets('a loose item keeps listItemBlockSpacing', (tester) async {
+      const md = '- parent\n\n  - child\n\n- next';
+      final t = _theme(headingSpacing: true);
+      expect(
+        await gap(tester, md, 'parent', 'child'),
+        t.listItemBlockSpacing,
+      );
+    });
+  });
 }
 
 Rect _rect(WidgetTester tester, String text) {

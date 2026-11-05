@@ -377,6 +377,7 @@ Widget _buildList(
         item,
         itemContentContext,
         ordered: ordered,
+        tight: data.tight,
         index: itemNumber == 0 ? index : itemNumber,
         level: level,
         leadingSpansBeforeMarker: itemLeadingSpans,
@@ -392,6 +393,7 @@ Widget _buildListItem(
   CmarkNode item,
   BlockRenderContext context, {
   required bool ordered,
+  required bool tight,
   required int index,
   required int level,
   required List<InlineSpan> leadingSpansBeforeMarker,
@@ -402,6 +404,7 @@ Widget _buildListItem(
         context,
         listLevel: level,
         spacing: context.theme.listItemBlockSpacing,
+        tight: tight,
       ) ??
       _blockColumn(const [], 0);
 
@@ -727,13 +730,15 @@ Widget _blockColumn(List<Widget> children, double spacing) {
 }
 
 /// Renders the child blocks of [node] in a column, with [spacing] and the
-/// theme's heading and lead-in spacing between them. Null when no child shows anything;
-/// callers that need a widget use an empty column, as before.
+/// theme's heading and lead-in spacing between them. [tight] is for the
+/// item of a tight list; see [spacedBlockColumn]. Null when no child shows
+/// anything; callers that need a widget use an empty column, as before.
 Widget? _childBlockColumn(
   CmarkNode node,
   BlockRenderContext context, {
   required int listLevel,
   required double spacing,
+  bool tight = false,
 }) {
   final children = <Widget>[];
   final nodes = <CmarkNode>[];
@@ -752,6 +757,7 @@ Widget? _childBlockColumn(
     children: children,
     nodes: nodes,
     spacing: spacing,
+    tight: tight,
   );
 }
 

@@ -1,3 +1,8 @@
+## 0.3.5
+
+- Remove the gap between paragraph text and a sublist in tight list items,
+  including after a colon. Loose lists and other block types keep their spacing.
+
 ## 0.3.4
 
 - Add `CmarkThemeData.leadInSpacing`, the space between a lead-in and the
