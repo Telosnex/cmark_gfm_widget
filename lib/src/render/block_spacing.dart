@@ -5,12 +5,12 @@ import '../theme/cmark_theme.dart';
 
 /// Lays out sibling blocks with [spacing] between them and none after the
 /// last one. [nodes] are the blocks' nodes, in the same order as
-/// [children]; with heading spacing in [theme], the space around a heading
-/// is [CmarkThemeData.spacingBetween].
+/// [children]; with heading or lead-in spacing in [theme], each gap is
+/// [CmarkThemeData.spacingBetween].
 ///
-/// Without heading spacing, this is a [Column] with [spacing]. With it,
-/// every gap is a [SizedBox] between two blocks, so that the blocks keep
-/// their positions in the column when a heading streams in.
+/// Without that spacing, this is a [Column] with [spacing]. With it, every
+/// gap is a [SizedBox] between two blocks, so that the blocks keep their
+/// positions in the column when a heading streams in.
 Widget spacedBlockColumn({
   required CmarkThemeData theme,
   required List<Widget> children,
@@ -18,7 +18,7 @@ Widget spacedBlockColumn({
   required double spacing,
 }) {
   assert(nodes == null || nodes.length == children.length);
-  if (nodes == null || !theme.hasHeadingSpacing) {
+  if (nodes == null || !theme.hasNodeSpacing) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,

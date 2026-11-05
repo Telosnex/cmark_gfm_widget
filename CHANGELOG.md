@@ -1,3 +1,11 @@
+## 0.3.4
+
+- Add `CmarkThemeData.leadInSpacing`, the space between a lead-in and the
+  block it introduces. A lead-in is a paragraph whose text ends with ":",
+  such as "To install it, run:". The block is a list, code block, table or
+  math block. Unset, the gap is the container's spacing, as before.
+- Add `CmarkThemeData.isLeadIn` and `.hasNodeSpacing`.
+
 ## 0.3.3
 
 - Add `CmarkThemeData.headingSpacingBefore` and `.headingSpacingAfter`.

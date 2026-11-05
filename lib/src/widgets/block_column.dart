@@ -9,8 +9,8 @@ import 'streaming_reveal.dart';
 /// `RenderPipeline.render`.
 ///
 /// It puts [CmarkThemeData.blockSpacing] between blocks and none after the
-/// last one. With [nodes], the space around a heading follows the theme's
-/// heading spacing; see [CmarkThemeData.spacingBetween]. The renderers give
+/// last one. With [nodes], the space around a heading or after a lead-in
+/// follows the theme; see [CmarkThemeData.spacingBetween]. The renderers give
 /// a block no space of its own, so use this widget, or the same spacing,
 /// for any column of rendered blocks.
 ///
@@ -36,8 +36,8 @@ class CmarkBlockColumn extends StatefulWidget {
   final List<Widget> children;
 
   /// The top-level node of each of [children], such as
-  /// `BlockRenderResult.node`. Without it, the theme's heading spacing is
-  /// not used: every gap is [CmarkThemeData.blockSpacing].
+  /// `BlockRenderResult.node`. Without it, the theme's heading and lead-in
+  /// spacing are not used: every gap is [CmarkThemeData.blockSpacing].
   final List<CmarkNode?>? nodes;
 
   /// Whether, and how, to fade in streamed content.

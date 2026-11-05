@@ -66,6 +66,7 @@ class CmarkThemeData {
     required this.blockSpacing,
     this.headingSpacingBefore,
     this.headingSpacingAfter,
+    this.leadInSpacing,
     required this.blockQuoteBackgroundColor,
     required this.blockQuoteBorderColor,
     required this.blockQuotePadding,
@@ -138,17 +139,35 @@ class CmarkThemeData {
   /// the text it introduces. See [spacingBetween].
   final double? headingSpacingAfter;
 
+  /// Vertical space between a lead-in and the block it introduces. Null
+  /// uses the spacing of the container.
+  ///
+  /// A lead-in is a paragraph whose text ends with ":", such as "To install
+  /// it, run:". The block it introduces is a list, code block, table or
+  /// math block. The paragraph finishes before that block starts, so the
+  /// space does not change while a document streams. See [spacingBetween].
+  final double? leadInSpacing;
+
   /// Whether a heading changes the spacing of its container.
   bool get hasHeadingSpacing =>
       headingSpacingBefore != null || headingSpacingAfter != null;
+
+  /// Whether the space between two blocks can depend on the blocks, so a
+  /// column needs their nodes. See [spacingBetween].
+  bool get hasNodeSpacing => hasHeadingSpacing || leadInSpacing != null;
 
   /// Vertical space between the sibling blocks [above] and [below], in a
   /// container that puts [spacing] between other blocks.
   ///
   /// Above a heading is [headingSpacingBefore] and below one is
   /// [headingSpacingAfter]. Between two headings, the larger of the two
-  /// applies, as CSS margins collapse. Unset values are [spacing].
+  /// applies, as CSS margins collapse. Between a lead-in and the block it
+  /// introduces is [leadInSpacing]. Unset values are [spacing].
   double spacingBetween(CmarkNode? above, CmarkNode? below, double spacing) {
+    final leadIn = leadInSpacing;
+    if (leadIn != null && isLeadIn(above) && _isIntroduced(below)) {
+      return leadIn;
+    }
     final afterAbove = _isHeading(above) ? headingSpacingAfter : null;
     final beforeBelow = _isHeading(below) ? headingSpacingBefore : null;
     if (afterAbove != null && beforeBelow != null) {
@@ -159,6 +178,27 @@ class CmarkThemeData {
 
   static bool _isHeading(CmarkNode? node) =>
       node?.type == CmarkNodeType.heading;
+
+  /// Whether [node] is a paragraph whose last text ends with ":". The
+  /// colon can be inside emphasis, as in "**Options:**".
+  static bool isLeadIn(CmarkNode? node) {
+    if (node?.type != CmarkNodeType.paragraph) return false;
+    var last = node!.lastChild;
+    while (last != null && last.firstChild != null) {
+      last = last.lastChild;
+    }
+    return last?.type == CmarkNodeType.text &&
+        last!.contentString.trimRight().endsWith(':');
+  }
+
+  static bool _isIntroduced(CmarkNode? node) => switch (node?.type) {
+        CmarkNodeType.list ||
+        CmarkNodeType.codeBlock ||
+        CmarkNodeType.table ||
+        CmarkNodeType.mathBlock =>
+          true,
+        _ => false,
+      };
 
   final Color blockQuoteBackgroundColor;
   final Color blockQuoteBorderColor;
@@ -215,6 +255,7 @@ class CmarkThemeData {
     double? blockSpacing,
     double? headingSpacingBefore,
     double? headingSpacingAfter,
+    double? leadInSpacing,
     Color? blockQuoteBackgroundColor,
     Color? blockQuoteBorderColor,
     EdgeInsets? blockQuotePadding,
@@ -255,6 +296,7 @@ class CmarkThemeData {
       blockSpacing: blockSpacing ?? this.blockSpacing,
       headingSpacingBefore: headingSpacingBefore ?? this.headingSpacingBefore,
       headingSpacingAfter: headingSpacingAfter ?? this.headingSpacingAfter,
+      leadInSpacing: leadInSpacing ?? this.leadInSpacing,
       blockQuoteBackgroundColor:
           blockQuoteBackgroundColor ?? this.blockQuoteBackgroundColor,
       blockQuoteBorderColor:

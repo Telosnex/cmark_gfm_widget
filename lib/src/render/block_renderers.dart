@@ -727,7 +727,7 @@ Widget _blockColumn(List<Widget> children, double spacing) {
 }
 
 /// Renders the child blocks of [node] in a column, with [spacing] and the
-/// theme's heading spacing between them. Null when no child shows anything;
+/// theme's heading and lead-in spacing between them. Null when no child shows anything;
 /// callers that need a widget use an empty column, as before.
 Widget? _childBlockColumn(
   CmarkNode node,

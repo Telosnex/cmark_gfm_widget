@@ -255,4 +255,47 @@ void main() {
     expect(unset.spacingBetween(paragraph, heading, 1), 1);
     expect(unset.hasHeadingSpacing, isFalse);
   });
+
+  test('spacingBetween a lead-in and the block it introduces', () {
+    final theme = _theme().copyWith(leadInSpacing: 2);
+    double gap(String markdown) {
+      final b = ParserController().parse(markdown).blocks.toList();
+      return theme.spacingBetween(b[0], b[1], 1);
+    }
+
+    expect(gap('Options:\n\n- a'), 2);
+    expect(gap('**Options:**\n\n- a'), 2);
+    expect(gap('Run:\n\n```\nx\n```'), 2);
+    expect(gap('Here:\n\n| a |\n| - |\n| b |'), 2);
+    // Not a lead-in, or not a block it introduces.
+    expect(gap('Done.\n\n- a'), 1);
+    expect(gap('Next:\n\nmore text'), 1);
+    expect(gap('`a:`\n\n- b'), 1);
+    expect(gap('# Options:\n\n- a'), 1);
+    expect(theme.hasNodeSpacing, isTrue);
+    expect(_theme().hasNodeSpacing, isFalse);
+  });
+
+  testWidgets('a lead-in has leadInSpacing before its list', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CmarkTheme(
+            data: _theme().copyWith(leadInSpacing: 2),
+            child: const CmarkMarkdownColumn(data: 'Options:\n\n- alpha'),
+          ),
+        ),
+      ),
+    );
+    final lead = _rect(tester, 'Options:');
+    final item = _rect(tester, 'alpha');
+    expect(item.top - lead.bottom, 2);
+  });
+}
+
+Rect _rect(WidgetTester tester, String text) {
+  final paragraph = tester.allRenderObjects
+      .whereType<RenderParagraph>()
+      .firstWhere((p) => p.text.toPlainText() == text);
+  return paragraph.localToGlobal(Offset.zero) & paragraph.size;
 }
