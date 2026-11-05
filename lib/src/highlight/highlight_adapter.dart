@@ -1,5 +1,10 @@
 import 'dart:collection';
+import 'dart:isolate';
 
+import 'scope_runs.dart';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:highlight_fork/highlight.dart' as hi;
 import 'package:pixel_snap_fork/material.dart';
 
@@ -29,11 +34,44 @@ class HighlightedCodeLines {
 /// 2. Incremental *stream states* keyed by highlight configuration. Streamed
 ///    code blocks are append-only, so completed lines are highlighted exactly
 ///    once using the parser-continuation API
-///    (`Highlight.parseWithContinuation`), and only the trailing partial line
-///    is re-highlighted per append. Without this, every streamed chunk
+///    (`Highlight.highlight` with an opaque continuation), and only the trailing
+///    partial line is re-highlighted per append. Without this, every streamed chunk
 ///    re-parses the entire code block, which is quadratic over the stream.
-class HighlightAdapter {
-  HighlightAdapter({this.maxCacheEntries = 128, this.maxStreamStates = 8});
+///
+/// Incremental parsing preserves open multiline constructs, but a grammar that
+/// looks ahead across a completed line boundary can differ from a whole-text
+/// parse (for example, JavaScript `hello\n()` classifies `hello` as a function
+/// only when the following line is available). Completed line styles are
+/// provisional but stable during streaming. On completion one whole-text parse
+/// corrects lookahead-dependent colors, preserving identical spans for unchanged
+/// lines. Large corrections run in an isolate (or at idle on web) and notify
+/// listeners when ready; until then the provisional result remains visible.
+/// Both paths retain the display policy: parse tab/CRLF-normalized, right-trimmed
+/// source, then preserve trailing spaces unhighlighted and omit final newlines.
+class HighlightAdapter extends ChangeNotifier {
+  HighlightAdapter({
+    this.maxCacheEntries = 128,
+    this.maxStreamStates = 8,
+    this.highlightOffload,
+    this.highlightOffloadThreshold = asyncFinalizationThreshold,
+  }) : assert(highlightOffloadThreshold == null ||
+            highlightOffloadThreshold >= 0) {
+    hi.ensureInitialized();
+  }
+
+  /// Blocks at or above this UTF-16 length finalize off the current frame.
+  /// Tuned from highlight_fork/tool/full_parse_results.md: 4 KiB already costs
+  /// ~6 ms native JIT p95 and ~3.9 ms WASM, leaving too little frame headroom.
+  static const int asyncFinalizationThreshold = 2048;
+
+  /// Optional worker hook. Null retains the native isolate/web idle fallback.
+  /// Errors fall back to synchronous parsing.
+  final HighlightOffload? highlightOffload;
+
+  /// Minimum normalized UTF-16 length to offload a completed block.
+  /// Defaults to 2048; zero always offloads; null always parses synchronously.
+  /// Auto-detection remains synchronous regardless of this value.
+  final int? highlightOffloadThreshold;
 
   final int maxCacheEntries;
 
@@ -42,7 +80,27 @@ class HighlightAdapter {
 
   final LinkedHashMap<_CacheKey, HighlightedCodeLines> _cache = LinkedHashMap();
   final List<_StreamState> _streamStates = [];
+  final Map<Object, _CacheKey> _activeRequests = {};
+  final Set<_CacheKey> _pending = {};
+  bool _disposed = false;
 
+  /// Invalidates in-flight corrections when a code block leaves the tree.
+  void releaseBlock(Object blockKey) => _activeRequests.remove(blockKey);
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _activeRequests.clear();
+    super.dispose();
+  }
+
+  /// Builds provisional incremental lines unless [complete] is true. Complete
+  /// blocks receive a whole-text parse; expensive corrections notify listeners
+  /// asynchronously. Widgets should provide a stable [blockKey] and call
+  /// [releaseBlock] on disposal so obsolete corrections are discarded.
+  /// [offload] overrides both constructor settings for this request, allowing a
+  /// shared adapter to honor per-renderer configuration. A null threshold in
+  /// this record disables offloading; a null hook uses the built-in fallback.
   HighlightedCodeLines buildLines({
     required String code,
     required TextStyle baseStyle,
@@ -51,6 +109,9 @@ class HighlightAdapter {
     required String? language,
     required TextStyle? fallbackStyle,
     required int tabSize,
+    bool complete = false,
+    Object? blockKey,
+    ({HighlightOffload? hook, int? threshold})? offload,
   }) {
     final normalized = _normalizeTabs(code.replaceAll('\r\n', '\n'), tabSize);
     final trimmed = normalized.trimRight();
@@ -58,8 +119,9 @@ class HighlightAdapter {
 
     final themeHash = _themeHash(theme);
     final key = _CacheKey(
-      codeHash: trimmed.hashCode,
-      trailingHash: trailing.hashCode,
+      code: trimmed,
+      complete: complete,
+      trailing: trailing,
       language: language,
       autoDetect: autoDetectLanguage,
       themeHash: themeHash,
@@ -68,6 +130,7 @@ class HighlightAdapter {
       tabSize: tabSize,
     );
 
+    if (blockKey != null) _activeRequests[blockKey] = key;
     final cached = _cache.remove(key);
     if (cached != null) {
       // Re-insert to approximate LRU semantics.
@@ -83,17 +146,51 @@ class HighlightAdapter {
       fallback: fallbackStyle ?? baseStyle,
     );
 
+    // Full parsing never replaces the streaming continuation. A block that
+    // grows again after finalization can resume incrementally.
+    var previous = _cache[_CacheKey(
+      code: trimmed,
+      trailing: trailing,
+      language: language,
+      autoDetect: autoDetectLanguage,
+      themeHash: themeHash,
+      baseStyleHash: baseStyle.hashCode,
+      fallbackHash: fallbackStyle?.hashCode ?? 0,
+      tabSize: tabSize,
+      complete: false,
+    )];
+    if (complete && previous == null) {
+      var longest = -1;
+      for (final entry in _cache.entries) {
+        if (entry.key.sameConfiguration(key) &&
+            trimmed.startsWith(entry.key.code) &&
+            entry.key.code.length > longest) {
+          previous = entry.value;
+          longest = entry.key.code.length;
+        }
+      }
+    }
+    final configHash = Object.hash(
+      language,
+      themeHash,
+      baseStyle.hashCode,
+      fallbackStyle?.hashCode ?? 0,
+      tabSize,
+    );
+    final threshold =
+        offload == null ? highlightOffloadThreshold : offload.threshold;
+    final hook = offload == null ? highlightOffload : offload.hook;
+    final defer = complete &&
+        !autoDetectLanguage &&
+        threshold != null &&
+        trimmed.length >= threshold;
     final List<TextSpan> lines;
     if (autoDetectLanguage) {
       lines = _autoDetectLines(trimmed, styles);
+    } else if (complete && !defer) {
+      lines = _fullLines(
+          highlightScopeRuns(trimmed, language ?? ''), trimmed, styles);
     } else {
-      final configHash = Object.hash(
-        language,
-        themeHash,
-        baseStyle.hashCode,
-        fallbackStyle?.hashCode ?? 0,
-        tabSize,
-      );
       lines = _incrementalLines(trimmed, language, configHash, styles);
     }
 
@@ -103,6 +200,10 @@ class HighlightAdapter {
       lines.add(TextSpan(text: '', style: effectiveBase));
     }
 
+    if (complete && previous != null) _reuseLines(lines, previous.lines);
+    if (complete && !defer && !autoDetectLanguage) {
+      _adoptFinalLines(configHash, trimmed, lines);
+    }
     final result = HighlightedCodeLines(
       lines: List<TextSpan>.unmodifiable(lines),
       baseStyle: effectiveBase,
@@ -111,7 +212,112 @@ class HighlightAdapter {
     if (_cache.length > maxCacheEntries) {
       _cache.remove(_cache.keys.first);
     }
+    if (defer && _pending.add(key)) {
+      _finalizeAsync(
+        key,
+        trimmed,
+        trailing,
+        language,
+        styles,
+        result,
+        tracked: blockKey != null,
+        configHash: configHash,
+        hook: hook,
+      );
+    }
     return result;
+  }
+
+  Future<void> _finalizeAsync(
+    _CacheKey key,
+    String text,
+    String trailing,
+    String? language,
+    _SpanStyles styles,
+    HighlightedCodeLines provisional, {
+    required bool tracked,
+    required int configHash,
+    required HighlightOffload? hook,
+  }) async {
+    try {
+      HighlightScopeRuns runs;
+      try {
+        if (hook != null) {
+          // Even a synchronously throwing hook must not notify during build.
+          runs = await Future<HighlightScopeRuns>.sync(
+            () => hook(text, language ?? ''),
+          );
+        } else if (kIsWeb) {
+          runs = await SchedulerBinding.instance.scheduleTask(
+            () => highlightScopeRuns(text, language ?? ''),
+            Priority.idle,
+          );
+        } else {
+          runs = await _highlightInIsolate(text, language ?? '');
+        }
+      } catch (_) {
+        if (_disposed || (tracked && !_activeRequests.containsValue(key))) {
+          if (identical(_cache[key], provisional)) _cache.remove(key);
+          return;
+        }
+        runs = highlightScopeRuns(text, language ?? '');
+      }
+      if (_disposed || (tracked && !_activeRequests.containsValue(key))) {
+        // Do not leave an uncorrected complete result masquerading as final in
+        // the cache if the same block/configuration is requested again later.
+        if (identical(_cache[key], provisional)) _cache.remove(key);
+        return;
+      }
+      final lines = _fullLines(runs, text, styles);
+      _appendTrailingWhitespace(lines, trailing, styles.base);
+      if (lines.isEmpty) lines.add(TextSpan(text: '', style: styles.base));
+      _reuseLines(lines, provisional.lines);
+      _adoptFinalLines(configHash, text, lines);
+      _cache[key] = HighlightedCodeLines(
+        lines: List.unmodifiable(lines),
+        baseStyle: styles.base,
+      );
+      if (_cache.length > maxCacheEntries) _cache.remove(_cache.keys.first);
+      notifyListeners();
+    } finally {
+      _pending.remove(key);
+    }
+  }
+
+  List<TextSpan> _fullLines(
+    HighlightScopeRuns scopedRuns,
+    String text,
+    _SpanStyles styles,
+  ) {
+    if (text.isEmpty) return [];
+    final runs = scopedRuns.map((run) {
+      var style = styles.base;
+      for (final scope in run[1].split(' ').where((s) => s.isNotEmpty)) {
+        style = _resolveStyle(style, scope, styles);
+      }
+      return _Run(run[0], style);
+    }).toList();
+    return _splitRunsIntoLines(runs)
+        .map((line) => _lineSpan(line, styles.base))
+        .toList();
+  }
+
+  // Retain corrected completed lines if a prematurely finalized block grows
+  // again. The parser continuation itself remains valid and unchanged.
+  void _adoptFinalLines(int configHash, String text, List<TextSpan> lines) {
+    for (final state in _streamStates) {
+      if (state.configHash == configHash && text.startsWith(state.prefix)) {
+        for (var i = 0; i < state.lineSpans.length && i < lines.length; i++) {
+          state.lineSpans[i] = lines[i];
+        }
+      }
+    }
+  }
+
+  void _reuseLines(List<TextSpan> lines, List<TextSpan> previous) {
+    for (var i = 0; i < lines.length && i < previous.length; i++) {
+      if (lines[i] == previous[i]) lines[i] = previous[i];
+    }
   }
 
   /// Incrementally highlights [trimmed], reusing a matching stream state when
@@ -199,9 +405,13 @@ class HighlightAdapter {
     _SpanStyles styles,
   ) {
     assert(source.endsWith('\n'), 'extend chunks must end at a line boundary');
-    final hi.Result result;
+    if (language == null || !hi.hljs.hasLanguage(language)) {
+      _extendStatePlain(state, source, styles.base);
+      return true;
+    }
+    final hi.HighlightResult result;
     try {
-      result = hi.highlight.parseWithContinuation(
+      result = hi.hljs.highlight(
         source,
         language: language,
         continuation: state.continuation,
@@ -210,8 +420,8 @@ class HighlightAdapter {
       return false;
     }
 
-    final runs = _flattenNodes(result.nodes, styles);
-    if (runs == null || _runsLength(runs) != source.length) {
+    final runs = _flattenNodes(result.emitter.root, styles);
+    if (runs.map((run) => run.text).join() != source) {
       return false;
     }
 
@@ -222,7 +432,7 @@ class HighlightAdapter {
       state.lineSpans.add(_lineSpan(line, styles.base));
     }
     state.prefix += source;
-    state.continuation = result.top;
+    state.continuation = result.continuation;
     return true;
   }
 
@@ -241,17 +451,20 @@ class HighlightAdapter {
   TextSpan _tailLineSpan(
     String tail,
     String? language,
-    hi.Mode? continuation,
+    hi.HighlightContinuation? continuation,
     _SpanStyles styles,
   ) {
+    if (language == null || !hi.hljs.hasLanguage(language)) {
+      return TextSpan(text: tail, style: styles.base);
+    }
     try {
-      final result = hi.highlight.parseWithContinuation(
+      final result = hi.hljs.highlight(
         tail,
         language: language,
         continuation: continuation,
       );
-      final runs = _flattenNodes(result.nodes, styles);
-      if (runs != null && _runsLength(runs) == tail.length) {
+      final runs = _flattenNodes(result.emitter.root, styles);
+      if (runs.map((run) => run.text).join() == tail) {
         return _lineSpan(runs, styles.base);
       }
     } catch (_) {
@@ -266,9 +479,9 @@ class HighlightAdapter {
       return <TextSpan>[];
     }
     try {
-      final result = hi.highlight.parse(trimmed, autoDetection: true);
-      final runs = _flattenNodes(result.nodes, styles);
-      if (runs != null && _runsLength(runs) == trimmed.length) {
+      final result = hi.hljs.highlightAuto(trimmed);
+      final runs = _flattenNodes(result.emitter.root, styles);
+      if (runs.map((run) => run.text).join() == trimmed) {
         return _splitRunsIntoLines(runs)
             .map((line) => _lineSpan(line, styles.base))
             .toList();
@@ -319,35 +532,27 @@ class HighlightAdapter {
     }
   }
 
-  /// Flattens a highlight node tree into style-resolved text runs.
-  /// Returns null when [nodes] is null.
-  List<_Run>? _flattenNodes(List<hi.Node>? nodes, _SpanStyles styles) {
-    if (nodes == null) {
-      return null;
-    }
+  /// Flattens a highlight token tree into style-resolved text runs.
+  List<_Run> _flattenNodes(hi.DataNode root, _SpanStyles styles) {
     final runs = <_Run>[];
-    _appendRuns(nodes, styles.base, styles, runs);
+    _appendRuns(root, styles.base, styles, runs);
     return runs;
   }
 
   void _appendRuns(
-    List<hi.Node> nodes,
+    hi.DataNode node,
     TextStyle parentStyle,
     _SpanStyles styles,
     List<_Run> out,
   ) {
-    for (final node in nodes) {
-      final style = _resolveStyle(parentStyle, node.className, styles);
-      final value = node.value;
-      if (value != null) {
-        if (value.isNotEmpty) {
-          out.add(_Run(value, style));
+    final style = _resolveStyle(parentStyle, node.scope, styles);
+    for (final child in node.children) {
+      if (child is String) {
+        if (child.isNotEmpty) {
+          out.add(_Run(child, style));
         }
-        continue;
-      }
-      final children = node.children;
-      if (children != null && children.isNotEmpty) {
-        _appendRuns(children, style, styles, out);
+      } else if (child is hi.DataNode) {
+        _appendRuns(child, style, styles, out);
       }
     }
   }
@@ -357,22 +562,27 @@ class HighlightAdapter {
     String? className,
     _SpanStyles styles,
   ) {
-    if (className == null) {
+    if (className == null || className.startsWith('language:')) {
       return parent;
     }
-    final themed = styles.theme[className];
-    if (themed != null) {
-      return parent.merge(themed);
+    // Modern grammars use hierarchical scopes such as title.function and
+    // variable.language. Prefer exact styles, then the nearest ancestor so
+    // existing themes with only title/variable remain useful.
+    var scope = className;
+    while (true) {
+      final themed = styles.theme[scope];
+      if (themed != null) {
+        return parent.merge(themed);
+      }
+      final dot = scope.lastIndexOf('.');
+      if (dot == -1) break;
+      scope = scope.substring(0, dot);
     }
-    return parent.merge(styles.fallback);
-  }
-
-  int _runsLength(List<_Run> runs) {
-    var length = 0;
-    for (final run in runs) {
-      length += run.text.length;
-    }
-    return length;
+    // Unthemed scopes nested inside a themed one (e.g. string interpolation
+    // `subst` inside `string`) keep the enclosing colour, as in browser
+    // highlight.js CSS. Only top-level unthemed scopes use the fallback.
+    if (identical(parent, styles.base)) return parent.merge(styles.fallback);
+    return parent;
   }
 
   /// Splits runs at newlines into per-line run lists. A trailing '\n'
@@ -476,7 +686,7 @@ class _StreamState {
   final List<TextSpan> lineSpans = [];
 
   /// Parser state after [prefix]; input to the next continuation parse.
-  hi.Mode? continuation;
+  hi.HighlightContinuation? continuation;
 
   void reset() {
     prefix = '';
@@ -487,8 +697,9 @@ class _StreamState {
 
 class _CacheKey {
   const _CacheKey({
-    required this.codeHash,
-    required this.trailingHash,
+    required this.code,
+    required this.complete,
+    required this.trailing,
     required this.language,
     required this.autoDetect,
     required this.themeHash,
@@ -497,8 +708,9 @@ class _CacheKey {
     required this.tabSize,
   });
 
-  final int codeHash;
-  final int trailingHash;
+  final String code;
+  final bool complete;
+  final String trailing;
   final String? language;
   final bool autoDetect;
   final int themeHash;
@@ -506,10 +718,19 @@ class _CacheKey {
   final int fallbackHash;
   final int tabSize;
 
+  bool sameConfiguration(_CacheKey other) =>
+      language == other.language &&
+      autoDetect == other.autoDetect &&
+      themeHash == other.themeHash &&
+      baseStyleHash == other.baseStyleHash &&
+      fallbackHash == other.fallbackHash &&
+      tabSize == other.tabSize;
+
   @override
   int get hashCode => Object.hash(
-        codeHash,
-        trailingHash,
+        code,
+        complete,
+        trailing,
         language,
         autoDetect,
         themeHash,
@@ -522,8 +743,9 @@ class _CacheKey {
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
     if (other is! _CacheKey) return false;
-    return codeHash == other.codeHash &&
-        trailingHash == other.trailingHash &&
+    return complete == other.complete &&
+        code == other.code &&
+        trailing == other.trailing &&
         language == other.language &&
         autoDetect == other.autoDetect &&
         themeHash == other.themeHash &&
@@ -532,3 +754,6 @@ class _CacheKey {
         tabSize == other.tabSize;
   }
 }
+
+Future<HighlightScopeRuns> _highlightInIsolate(String text, String language) =>
+    Isolate.run(() => highlightScopeRuns(text, language));

@@ -7,6 +7,7 @@ class DocumentSnapshot {
   DocumentSnapshot._({
     required this.root,
     required this.revision,
+    this.streamingEndLine,
   });
 
   /// Root node of the document (always of type [CmarkNodeType.document]).
@@ -14,6 +15,27 @@ class DocumentSnapshot {
 
   /// Snapshot revision (monotonic counter assigned by the controller).
   final int revision;
+
+  /// Last parsed source line while streaming, or null for a finished document.
+  ///
+  /// The parser finalizes an open code block at this line. A block closed by
+  /// a fence or by its container ends before it, so it is safe to recolor.
+  final int? streamingEndLine;
+
+  bool isCodeBlockComplete(CmarkNode node) =>
+      streamingEndLine == null || node.endLine < streamingEndLine!;
+
+  /// Whether every code block inside [node] is ready for final recoloring.
+  bool isBlockComplete(CmarkNode node) {
+    if (streamingEndLine == null) return true;
+    if (node.type == CmarkNodeType.codeBlock) return isCodeBlockComplete(node);
+    var child = node.firstChild;
+    while (child != null && child.type.isBlock) {
+      if (!isBlockComplete(child)) return false;
+      child = child.next;
+    }
+    return true;
+  }
 
   /// Returns an iterable of top-level block nodes.
   Iterable<CmarkNode> get blocks sync* {
@@ -33,6 +55,7 @@ class DocumentSnapshot {
     required CmarkNode root,
     required StableIdRegistry registry,
     required int revision,
+    int? streamingEndLine,
   }) {
     root.userData = NodeMetadata(registry.idFor(root, revision));
     var block = root.firstChild;
@@ -44,6 +67,7 @@ class DocumentSnapshot {
     return DocumentSnapshot._(
       root: root,
       revision: revision,
+      streamingEndLine: streamingEndLine,
     );
   }
 

@@ -44,7 +44,10 @@ class BlockRenderContext {
     required this.codeBlockWrapper,
     this.mathBlockBuilder,
     this.onLinkTap,
+    this.isCodeBlockComplete,
   });
+
+  final bool Function(CmarkNode)? isCodeBlockComplete;
 
   final CmarkThemeData theme;
   final InlineRenderContext inlineContext;
@@ -78,20 +81,20 @@ List<BlockRenderResult> renderDocumentBlocks(
     cacheKey: cacheKey,
     renderBlock: (block, leadingSpans) {
       // Pass leading spans to the first text block.
-      final blockContext = leadingSpans.isNotEmpty
-          ? BlockRenderContext(
-              theme: context.theme,
-              inlineContext: context.inlineContext,
-              selectable: context.selectable,
-              textScaleFactor: context.textScaleFactor,
-              renderFootnoteDefinitions: context.renderFootnoteDefinitions,
-              leadingSpans: leadingSpans,
-              tableOptions: context.tableOptions,
-              codeBlockWrapper: context.codeBlockWrapper,
-              mathBlockBuilder: context.mathBlockBuilder,
-              onLinkTap: context.onLinkTap,
-            )
-          : context;
+      final blockContext = BlockRenderContext(
+        theme: context.theme,
+        inlineContext: context.inlineContext,
+        selectable: context.selectable,
+        textScaleFactor: context.textScaleFactor,
+        renderFootnoteDefinitions: context.renderFootnoteDefinitions,
+        leadingSpans:
+            leadingSpans.isNotEmpty ? leadingSpans : context.leadingSpans,
+        tableOptions: context.tableOptions,
+        codeBlockWrapper: context.codeBlockWrapper,
+        mathBlockBuilder: context.mathBlockBuilder,
+        onLinkTap: context.onLinkTap,
+        isCodeBlockComplete: snapshot.isCodeBlockComplete,
+      );
       final widget = _renderBlock(block, blockContext);
       if (widget == null || !repaintBoundaries) return widget;
       return RepaintBoundary(child: widget);
@@ -263,6 +266,63 @@ Widget _buildBlockQuote(
 }
 
 Widget _buildCodeBlock(CmarkNode node, BlockRenderContext context) {
+  Widget result = _HighlightedCodeBlock(node: node, context: context);
+  final wrapper = context.codeBlockWrapper;
+  if (wrapper != null) {
+    result = wrapper(
+      result,
+      CodeBlockMetadata(
+        node: node,
+        info: node.codeData.info,
+        literal: node.codeData.literal,
+      ),
+    );
+  }
+  return result;
+}
+
+/// Keeps the asynchronous final recoloring local to the live code block, even
+/// when the enclosing top-level widget is retained by BlockRenderCache.
+class _HighlightedCodeBlock extends StatefulWidget {
+  const _HighlightedCodeBlock({required this.node, required this.context});
+
+  final CmarkNode node;
+  final BlockRenderContext context;
+
+  @override
+  State<_HighlightedCodeBlock> createState() => _HighlightedCodeBlockState();
+}
+
+class _HighlightedCodeBlockState extends State<_HighlightedCodeBlock> {
+  final Object _blockKey = Object();
+
+  @override
+  void initState() {
+    super.initState();
+    _highlightAdapter.addListener(_highlightChanged);
+  }
+
+  void _highlightChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _highlightAdapter.removeListener(_highlightChanged);
+    _highlightAdapter.releaseBlock(_blockKey);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      _buildHighlightedCodeBlock(widget.node, widget.context, _blockKey);
+}
+
+Widget _buildHighlightedCodeBlock(
+  CmarkNode node,
+  BlockRenderContext context,
+  Object blockKey,
+) {
   final literal = node.codeData.literal;
   final highlightConfig = context.theme.codeHighlightTheme;
   final language = _resolveCodeBlockLanguage(
@@ -276,6 +336,8 @@ Widget _buildCodeBlock(CmarkNode node, BlockRenderContext context) {
   // ask highlight to auto-detect if we cannot determine a language.
   final highlighted = _highlightAdapter.buildLines(
     code: literal,
+    blockKey: blockKey,
+    complete: context.isCodeBlockComplete?.call(node) ?? true,
     baseStyle: context.theme.codeBlockTextStyle,
     theme: highlightConfig.theme,
     // Autodetection is expensive, error-prone, and throws exceptions as a
@@ -285,12 +347,19 @@ Widget _buildCodeBlock(CmarkNode node, BlockRenderContext context) {
     language: language,
     fallbackStyle: context.theme.codeBlockTextStyle,
     tabSize: highlightConfig.tabSize,
+    offload: (
+      hook: highlightConfig.highlightOffload,
+      threshold: highlightConfig.highlightOffloadThreshold,
+    ),
   );
 
   // One widget per line, instead of one paragraph for the whole block.
-  // Line spans are identical instances across streaming appends (see
-  // [HighlightAdapter]), so RenderParagraph skips layout for unchanged lines
-  // and streaming a code block costs O(1) per chunk instead of O(lines).
+  // Provisional line spans are identical instances across streaming appends
+  // (see HighlightAdapter), so RenderParagraph skips layout for unchanged
+  // lines and streaming costs O(1) per chunk instead of O(lines). At a closing
+  // fence or document completion, one whole-text parse corrects lookahead-
+  // dependent colors. Only changed lines get new spans. Large corrections
+  // notify _HighlightedCodeBlock asynchronously without rebuilding its parent.
   final textScaler = TextScaler.linear(context.textScaleFactor);
   final lineWidgets = <Widget>[];
   for (final line in highlighted.lines) {
@@ -331,17 +400,6 @@ Widget _buildCodeBlock(CmarkNode node, BlockRenderContext context) {
       child: child,
     ),
   );
-
-  // Let client wrap with additional UI (e.g., copy button)
-  final wrapper = context.codeBlockWrapper;
-  if (wrapper != null) {
-    final metadata = CodeBlockMetadata(
-      node: node,
-      info: node.codeData.info,
-      literal: node.codeData.literal,
-    );
-    result = wrapper(result, metadata);
-  }
 
   return result;
 }
@@ -471,6 +529,7 @@ BlockRenderContext _withoutLeadingSpans(BlockRenderContext context) {
     codeBlockWrapper: context.codeBlockWrapper,
     mathBlockBuilder: context.mathBlockBuilder,
     onLinkTap: context.onLinkTap,
+    isCodeBlockComplete: context.isCodeBlockComplete,
   );
 }
 

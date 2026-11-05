@@ -1,6 +1,9 @@
 import 'package:cmark_gfm_dart/cmark_gfm_dart.dart';
 import 'package:pixel_snap_fork/material.dart';
+import '../highlight/scope_runs.dart';
 import 'a11y_dark_theme.dart' as highlight_theme;
+
+const _unchangedHighlightThreshold = Object();
 
 /// Configuration for syntax highlighting in code blocks.
 class CodeHighlightTheme {
@@ -10,6 +13,8 @@ class CodeHighlightTheme {
     this.defaultLanguage,
     this.fallbackStyle,
     this.tabSize = 2,
+    this.highlightOffload,
+    this.highlightOffloadThreshold = 2048,
   });
 
   /// Mapping from highlight style class name to [TextStyle].
@@ -27,6 +32,14 @@ class CodeHighlightTheme {
   /// Text style applied when a token does not match any class in [theme].
   final TextStyle? fallbackStyle;
 
+  /// Worker hook for completed code blocks. Null uses the built-in isolate or
+  /// web idle task. Errors fall back to synchronous parsing.
+  final HighlightOffload? highlightOffload;
+
+  /// Minimum normalized UTF-16 length to offload. Zero always offloads; null
+  /// disables offloading. Auto-detection is always synchronous.
+  final int? highlightOffloadThreshold;
+
   /// Number of spaces to use when replacing tab characters.
   final int tabSize;
 
@@ -36,6 +49,8 @@ class CodeHighlightTheme {
     String? defaultLanguage,
     TextStyle? fallbackStyle,
     int? tabSize,
+    HighlightOffload? highlightOffload,
+    Object? highlightOffloadThreshold = _unchangedHighlightThreshold,
   }) {
     return CodeHighlightTheme(
       theme: theme ?? this.theme,
@@ -43,6 +58,11 @@ class CodeHighlightTheme {
       defaultLanguage: defaultLanguage ?? this.defaultLanguage,
       fallbackStyle: fallbackStyle ?? this.fallbackStyle,
       tabSize: tabSize ?? this.tabSize,
+      highlightOffload: highlightOffload ?? this.highlightOffload,
+      highlightOffloadThreshold:
+          identical(highlightOffloadThreshold, _unchangedHighlightThreshold)
+              ? this.highlightOffloadThreshold
+              : highlightOffloadThreshold as int?,
     );
   }
 }

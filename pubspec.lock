@@ -188,10 +188,10 @@ packages:
     dependency: "direct main"
     description:
       name: highlight_fork
-      sha256: "47fe3c3dcb57c1040688524911611acee220163fdb81412c84003746f4207a85"
+      sha256: e67f15a124af04c332e39b55d42d9c87e6d4a7e4268cc442102332afdbe83021
       url: "https://pub.dev"
     source: hosted
-    version: "0.7.1"
+    version: "0.8.0"
   http:
     dependency: transitive
     description:

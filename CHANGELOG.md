@@ -1,3 +1,11 @@
+## 0.4.0
+
+- Upgrade to highlight_fork 0.8.0 and the highlight.js 11 token API.
+- Rehighlight completed fenced code blocks in full, replacing provisional streaming colours.
+- Inherit parent styles for nested and dotted highlight scopes.
+- Add a public `highlight.dart` library with scope-run helpers and full-highlight types.
+- Add a full-highlight offload hook and configurable size threshold for large code blocks.
+
 ## 0.3.5
 
 - Remove the gap between paragraph text and a sublist in tight list items,

@@ -34,11 +34,12 @@ class BlockRenderCache {
 }
 
 class _CachedBlock {
-  const _CachedBlock(this.node, this.leadingSpans, this.result);
+  const _CachedBlock(this.node, this.leadingSpans, this.result, this.complete);
 
   final CmarkNode node;
   final List<InlineSpan> leadingSpans;
   final BlockRenderResult result;
+  final bool complete;
 }
 
 /// Renders each top-level block of [snapshot] with [renderBlock], and keeps
@@ -69,8 +70,10 @@ List<BlockRenderResult> renderTopLevelBlocks(
   for (final block in snapshot.blocks) {
     final id =
         DocumentSnapshot.metadataFor(block)?.id ?? 'block-${results.length}';
+    final complete = snapshot.isBlockComplete(block);
     var entry = previous[id];
     if (entry == null ||
+        entry.complete != complete ||
         !listEquals(entry.leadingSpans, remainingLeadingSpans) ||
         !entry.node.contentEquals(block)) {
       final widget = renderBlock(block, remainingLeadingSpans);
@@ -79,6 +82,7 @@ List<BlockRenderResult> renderTopLevelBlocks(
         block,
         remainingLeadingSpans,
         BlockRenderResult(id: id, widget: widget, node: block),
+        complete,
       );
     }
     // Leading spans only go to the first shown block.

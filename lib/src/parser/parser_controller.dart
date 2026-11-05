@@ -23,15 +23,16 @@ class ParserController {
   /// [cmarkStreamingParseLength].
   DocumentSnapshot parse(String data, {bool streaming = false}) {
     final parser = CmarkParser(options: _parserOptions);
-    parser.feed(
-      streaming ? data.substring(0, cmarkStreamingParseLength(data)) : data,
-    );
+    final parsedData =
+        streaming ? data.substring(0, cmarkStreamingParseLength(data)) : data;
+    parser.feed(parsedData);
     final root = parser.finish();
     _revision += 1;
     return DocumentSnapshot.fromRoot(
       root: root,
       registry: _registry,
       revision: _revision,
+      streamingEndLine: streaming ? _sourceLineCount(parsedData) : null,
     );
   }
 
@@ -56,4 +57,16 @@ class ParserController {
       revision: _revision,
     );
   }
+}
+
+// Match the parser's CRLF, CR and LF line boundaries without counting a final
+// empty segment as a parsed line.
+int _sourceLineCount(String text) {
+  if (text.isEmpty) return 0;
+  final lines = RegExp(r'\r\n|\r|\n').allMatches(text);
+  var count = 1;
+  for (final match in lines) {
+    if (match.end < text.length) count++;
+  }
+  return count;
 }
