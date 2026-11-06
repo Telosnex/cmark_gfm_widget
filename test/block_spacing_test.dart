@@ -322,14 +322,47 @@ void main() {
       const md = '- run:\n  ```\n  code\n  ```';
       expect(await gap(tester, md, 'run:', 'code'), greaterThan(0));
     });
+  });
 
-    testWidgets('a loose item keeps listItemBlockSpacing', (tester) async {
-      const md = '- parent\n\n  - child\n\n- next';
-      final t = _theme(headingSpacing: true);
-      expect(
-        await gap(tester, md, 'parent', 'child'),
-        t.listItemBlockSpacing,
+  group('in a loose list item', () {
+    Future<double> gap(
+        WidgetTester tester, String md, String a, String b) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: CmarkTheme(
+              data: _theme(headingSpacing: true).copyWith(leadInSpacing: 2),
+              child: CmarkMarkdownColumn(data: md),
+            ),
+          ),
+        ),
       );
+      return _rect(tester, b).top - _rect(tester, a).bottom;
+    }
+
+    final t = _theme(headingSpacing: true);
+
+    testWidgets('a sublist sits right under its text', (tester) async {
+      const md = '- parent\n  - child\n\n- next';
+      expect(await gap(tester, md, 'parent', 'child'), 0);
+      expect(await gap(tester, '- run:\n\n  - child', 'run:', 'child'), 0);
+    });
+
+    testWidgets('items keep listItemSpacing', (tester) async {
+      const md = '- parent\n  - child\n\n- next';
+      expect(await gap(tester, md, 'child', 'next'), t.listItemSpacing);
+    });
+
+    testWidgets('text after a sublist keeps listItemBlockSpacing', (
+      tester,
+    ) async {
+      const md = '- parent\n\n  - child\n\n  more\n\n- next';
+      expect(await gap(tester, md, 'child', 'more'), t.listItemBlockSpacing);
+    });
+
+    testWidgets('two paragraphs keep listItemBlockSpacing', (tester) async {
+      const md = '- one\n\n  two\n\n- next';
+      expect(await gap(tester, md, 'one', 'two'), t.listItemBlockSpacing);
     });
   });
 }

@@ -1,3 +1,10 @@
+## 0.4.2
+
+- A sublist now sits right under its item's text in loose lists too, so it
+  groups with its own item. In a loose list, text after a sublist and other
+  blocks in an item keep `listItemBlockSpacing`; items keep
+  `listItemSpacing`.
+
 ## 0.4.1
 
 - Keep full-highlight dispatch failures asynchronous so fallback parsing never

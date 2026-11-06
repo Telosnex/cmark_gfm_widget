@@ -789,15 +789,15 @@ Widget _blockColumn(List<Widget> children, double spacing) {
 }
 
 /// Renders the child blocks of [node] in a column, with [spacing] and the
-/// theme's heading and lead-in spacing between them. [tight] is for the
-/// item of a tight list; see [spacedBlockColumn]. Null when no child shows
+/// theme's heading and lead-in spacing between them. [tight] is set for a
+/// list item; see [spacedBlockColumn]. Null when no child shows
 /// anything; callers that need a widget use an empty column, as before.
 Widget? _childBlockColumn(
   CmarkNode node,
   BlockRenderContext context, {
   required int listLevel,
   required double spacing,
-  bool tight = false,
+  bool? tight,
 }) {
   final children = <Widget>[];
   final nodes = <CmarkNode>[];
