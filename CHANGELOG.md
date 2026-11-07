@@ -1,3 +1,7 @@
+## 1.0.0
+
+- First stable release. Requires cmark_gfm_dart, highlight_fork, pixel_snap_fork and flutter_math_fork_fork 1.0.0.
+
 ## 0.4.2
 
 - A sublist now sits right under its item's text in loose lists too, so it
