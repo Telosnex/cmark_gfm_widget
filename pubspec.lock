@@ -69,10 +69,10 @@ packages:
     dependency: "direct main"
     description:
       name: cmark_gfm_dart
-      sha256: "12b7f39dbacb30a395ca4996f15920c70b58ba1f395fcf47a23bd40507d0b92f"
+      sha256: fa86b2ca41352f80cb887b276322adade7aef122b08a7385600ca10fee611e77
       url: "https://pub.dev"
     source: hosted
-    version: "0.1.0"
+    version: "1.0.0"
   collection:
     dependency: transitive
     description:
@@ -151,10 +151,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_math_fork_fork
-      sha256: "0d3d5cff742928a1dfafa084ecd884eb014702610252d96cd3ab5e09f79b5f5e"
+      sha256: "4bc591c466892b9886ca204a8db9b592f2a4d2a8422f255face36c19a5dae161"
       url: "https://pub.dev"
     source: hosted
-    version: "0.7.3"
+    version: "1.0.0"
   flutter_svg:
     dependency: transitive
     description:
@@ -188,10 +188,10 @@ packages:
     dependency: "direct main"
     description:
       name: highlight_fork
-      sha256: e67f15a124af04c332e39b55d42d9c87e6d4a7e4268cc442102332afdbe83021
+      sha256: edfaad777878d9b6964d3584aed41f9fe468d29c67e046125ce9edc8d17ed353
       url: "https://pub.dev"
     source: hosted
-    version: "0.8.0"
+    version: "1.1.0"
   http:
     dependency: transitive
     description:
@@ -356,10 +356,10 @@ packages:
     dependency: "direct main"
     description:
       name: pixel_snap_fork
-      sha256: "3a603b7d9f944334cdac2041430590c60b71c8d09b364dfc5c98285b0d346fcc"
+      sha256: "404d2dbae248f1fcc87a3895ed0c10112d0e9d48cfb191033c5103b960f12169"
       url: "https://pub.dev"
     source: hosted
-    version: "0.2.0"
+    version: "1.0.0"
   pool:
     dependency: transitive
     description:

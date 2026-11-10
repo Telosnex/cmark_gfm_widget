@@ -1,3 +1,7 @@
+## 1.0.1
+
+- Requires highlight_fork 1.1.0. Code blocks parse in about half the time.
+
 ## 1.0.0
 
 - First stable release. Requires cmark_gfm_dart, highlight_fork, pixel_snap_fork and flutter_math_fork_fork 1.0.0.
