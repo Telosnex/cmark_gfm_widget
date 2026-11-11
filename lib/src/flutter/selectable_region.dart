@@ -380,9 +380,14 @@ class SelectableRegionState extends State<SelectableRegion>
         granularity: TextGranularity.line,
       ),
     ),
+    // EditableText's default action for this intent is typed
+    // Action<DirectionalCaretMovementIntent>. When a text field inside this
+    // region invokes it, this action is the override, and callingAction casts
+    // the default action to Action<T>. A narrower T makes that cast throw, so
+    // Up and Down do nothing in the field.
     ExtendSelectionVerticallyToAdjacentLineIntent: _makeOverridable(
-      _DirectionallyExtendCaretSelectionAction<
-          ExtendSelectionVerticallyToAdjacentLineIntent>(this),
+      _DirectionallyExtendCaretSelectionAction<DirectionalCaretMovementIntent>(
+          this),
     ),
     ExtendSelectionToDocumentBoundaryIntent: _makeOverridable(
       _GranularlyExtendCaretSelectionAction<

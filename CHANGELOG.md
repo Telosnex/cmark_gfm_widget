@@ -1,3 +1,9 @@
+## 1.0.2
+
+- Up and Down move the caret in a text field inside a `SelectionArea`. Before,
+  the region's override of the vertical caret action threw a type error, so
+  the keys did nothing.
+
 ## 1.0.1
 
 - Requires highlight_fork 1.1.0. Code blocks parse in about half the time.
