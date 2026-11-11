@@ -50,7 +50,13 @@ void main() {
       controller.selection,
       const TextSelection(baseOffset: 5, extentOffset: 1),
     );
-  }, variant: TargetPlatformVariant.all());
+  },
+      variant: TargetPlatformVariant.all(),
+      // On the web, the browser moves the caret in a text field, so these
+      // keys never reach the region's actions (DefaultTextEditingShortcuts
+      // maps them to DoNothingAndStopPropagationTextIntent). In a widget test
+      // nothing moves it.
+      skip: kIsWeb);
 
   // The word, line, document, and select-all keys each go through their own
   // region action. The keys differ between Apple and other platforms.
@@ -111,7 +117,13 @@ void main() {
       [if (apple) LogicalKeyboardKey.meta else LogicalKeyboardKey.control],
     );
     expect(_offsets(controller), (0, 18));
-  }, variant: TargetPlatformVariant.all());
+  },
+      variant: TargetPlatformVariant.all(),
+      // On the web, the browser moves the caret in a text field, so these
+      // keys never reach the region's actions (DefaultTextEditingShortcuts
+      // maps them to DoNothingAndStopPropagationTextIntent). In a widget test
+      // nothing moves it.
+      skip: kIsWeb);
 }
 
 Future<TextEditingController> _pumpField(
