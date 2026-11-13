@@ -92,8 +92,8 @@ void main() {
         '| a |\n|---|\n| 1 |\n</details>\n\nAfter',
       );
       expect(_shape(items), '[details(T): TABLE] P');
-      final table = (items.first as DetailsGroupItem).children.single
-          as DetailsBlockItem;
+      final table =
+          (items.first as DetailsGroupItem).children.single as DetailsBlockItem;
       var rows = 0;
       for (var r = table.node.firstChild; r != null; r = r.next) {
         rows++;
