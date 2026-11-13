@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 
 import '../parser/document_snapshot.dart';
 import '../theme/cmark_theme.dart';
+import '../widgets/details.dart';
 import 'block_render_cache.dart';
 import 'block_renderers.dart';
 import 'inline_renderers.dart';
@@ -20,6 +21,7 @@ class RenderOptions {
     this.renderFootnoteDefinitions = true,
     this.tableOptions = const TableRenderOptions(),
     this.codeBlockWrapper,
+    this.detailsBuilder,
     this.mathOptions = const MathRenderOptions(),
     this.leadingSpans = const [],
     this.onLinkTap,
@@ -33,6 +35,12 @@ class RenderOptions {
   final bool renderFootnoteDefinitions;
   final TableRenderOptions tableOptions;
   final CodeBlockWrapperBuilder? codeBlockWrapper;
+
+  /// Builds a `<details>` section. Null uses [CmarkDetails].
+  ///
+  /// See [DetailsBuilder] for the rules a builder must follow.
+  final DetailsBuilder? detailsBuilder;
+
   final MathRenderOptions mathOptions;
 
   /// Optional tap handler for links (Markdown links).
@@ -83,6 +91,74 @@ class CodeBlockMetadata {
   final String literal;
 }
 
+/// Builds a `<details>` section, such as the one GitHub shows for
+/// `<details><summary>Title</summary>`.
+///
+/// The builder owns the open/closed state; [CmarkDetails] is the default.
+/// The package builds the parts in [data], so they stay selectable and the
+/// blocks in [CmarkDetailsData.body] keep their cached widgets while the
+/// document streams.
+///
+/// The builder runs each time the document changes while the section is
+/// streaming. For a fast update:
+///
+/// - Keep [CmarkDetailsData.body] at the same place in the returned tree on
+///   every call, for example always as the second child of a [Column]. If it
+///   moves, Flutter builds every block in it again.
+/// - Return a widget of the same type on every call, also when
+///   [CmarkDetailsData.isComplete] changes. A different type loses the
+///   widget's state, such as whether the section is open.
+/// - While the section is closed, leave [CmarkDetailsData.body] out of the
+///   tree. A body that is only hidden, for example by [Offstage] or
+///   [Visibility], can still be selected and copied.
+///
+/// The cache does not call the builder again for a section that did not
+/// change. When the builder starts to give different widgets, change the
+/// `cacheKey` given to [RenderPipeline.render].
+typedef DetailsBuilder = Widget Function(
+  BuildContext context,
+  CmarkDetailsData data,
+);
+
+/// The parts of a `<details>` section, for a [DetailsBuilder].
+@immutable
+class CmarkDetailsData {
+  const CmarkDetailsData({
+    required this.node,
+    required this.summary,
+    required this.body,
+    required this.summaryText,
+    required this.initiallyOpen,
+    required this.isComplete,
+    required this.theme,
+  });
+
+  /// The HTML block with the `<details>` tag.
+  final CmarkNode node;
+
+  /// The summary text, built by the package. It is selectable when the
+  /// document is. Without a `<summary>` tag it shows "Details", as browsers
+  /// do.
+  final Widget summary;
+
+  /// The blocks in the section, built by the package.
+  final Widget body;
+
+  /// The plain text of the `<summary>` tag, or null if there is none.
+  final String? summaryText;
+
+  /// Whether the `<details>` tag has the `open` attribute. In HTML, it
+  /// means that the section starts open.
+  final bool initiallyOpen;
+
+  /// Whether the section has all its content: its `</details>` tag arrived,
+  /// or the document stopped streaming.
+  final bool isComplete;
+
+  /// The theme the section was rendered with.
+  final CmarkThemeData theme;
+}
+
 class RenderPipeline {
   const RenderPipeline();
 
@@ -117,6 +193,7 @@ class RenderPipeline {
       leadingSpans: const [], // Don't put leadingSpans in base context - handled separately
       tableOptions: options.tableOptions,
       codeBlockWrapper: options.codeBlockWrapper,
+      detailsBuilder: options.detailsBuilder,
       mathBlockBuilder: options.mathOptions.blockBuilder,
     );
 

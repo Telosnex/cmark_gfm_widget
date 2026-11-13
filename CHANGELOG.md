@@ -1,3 +1,17 @@
+## 1.0.3
+
+- `<details>` sections, as on GitHub. The blocks between `<details>` and
+  `</details>` show as one collapsible section with its `<summary>` text, at
+  the top level and inside lists and block quotes. A section without its
+  `</details>` yet runs to the end, so a section groups while it streams. The
+  default widget is `CmarkDetails`; `RenderOptions.detailsBuilder` replaces
+  it. The blocks in a section keep their cached widgets.
+- While streaming, a last line that is a `<details>`, `<summary>` or
+  `</details>` tag, or the start of one, is left out until its newline
+  arrives, so the raw tag does not show for a few chunks.
+- `BlockRenderCache` renders the last block once more when the document stops
+  streaming or a block arrives after it.
+
 ## 1.0.2
 
 - Up and Down move the caret in a text field inside a `SelectionArea`. Before,

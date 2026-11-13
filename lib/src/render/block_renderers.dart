@@ -9,8 +9,10 @@ import 'package:pixel_snap_fork/material.dart';
 import '../theme/cmark_theme.dart';
 import '../highlight/highlight_adapter.dart';
 import '../widgets/source_aware_widget.dart';
+import '../widgets/details.dart';
 import 'block_render_cache.dart';
 import 'block_spacing.dart';
+import 'details_grouping.dart';
 import 'inline_renderers.dart';
 import 'math_parser_settings.dart';
 import 'render_pipeline.dart';
@@ -42,12 +44,18 @@ class BlockRenderContext {
     this.leadingSpans = const [],
     required this.tableOptions,
     required this.codeBlockWrapper,
+    this.detailsBuilder,
     this.mathBlockBuilder,
     this.onLinkTap,
     this.isCodeBlockComplete,
+    this.streaming = false,
   });
 
   final bool Function(CmarkNode)? isCodeBlockComplete;
+
+  /// Whether the block being rendered can still get content: it is the
+  /// last block of a document that is streaming.
+  final bool streaming;
 
   final CmarkThemeData theme;
   final InlineRenderContext inlineContext;
@@ -56,6 +64,7 @@ class BlockRenderContext {
   final bool renderFootnoteDefinitions;
   final TableRenderOptions tableOptions;
   final CodeBlockWrapperBuilder? codeBlockWrapper;
+  final DetailsBuilder? detailsBuilder;
   final BlockMathWidgetBuilder? mathBlockBuilder;
 
   /// Optional tap handler for links (Markdown links).
@@ -73,12 +82,27 @@ List<BlockRenderResult> renderDocumentBlocks(
   Object? cacheKey,
   bool repaintBoundaries = false,
 }) {
+  final streaming = snapshot.streamingEndLine != null;
   return renderTopLevelBlocks(
     snapshot,
     leadingSpans,
     theme: context.theme,
     cache: cache,
     cacheKey: cacheKey,
+    renderDetails: (parts) => _buildDetails(
+      context,
+      opener: parts.opener,
+      summaryText: parts.summaryText,
+      initiallyOpen: parts.initiallyOpen,
+      isComplete: parts.isComplete,
+      leadingSpans: parts.leadingSpans,
+      children: [
+        for (final child in parts.children)
+          KeyedSubtree(key: ValueKey<String>(child.id), child: child.widget),
+      ],
+      nodes: [for (final child in parts.children) child.node],
+      spacing: context.theme.blockSpacing,
+    ),
     renderBlock: (block, leadingSpans) {
       // Pass leading spans to the first text block.
       final blockContext = BlockRenderContext(
@@ -91,9 +115,11 @@ List<BlockRenderResult> renderDocumentBlocks(
             leadingSpans.isNotEmpty ? leadingSpans : context.leadingSpans,
         tableOptions: context.tableOptions,
         codeBlockWrapper: context.codeBlockWrapper,
+        detailsBuilder: context.detailsBuilder,
         mathBlockBuilder: context.mathBlockBuilder,
         onLinkTap: context.onLinkTap,
         isCodeBlockComplete: snapshot.isCodeBlockComplete,
+        streaming: streaming && block.next == null,
       );
       final widget = _renderBlock(block, blockContext);
       if (widget == null || !repaintBoundaries) return widget;
@@ -527,10 +553,69 @@ BlockRenderContext _withoutLeadingSpans(BlockRenderContext context) {
     renderFootnoteDefinitions: context.renderFootnoteDefinitions,
     tableOptions: context.tableOptions,
     codeBlockWrapper: context.codeBlockWrapper,
+    detailsBuilder: context.detailsBuilder,
     mathBlockBuilder: context.mathBlockBuilder,
     onLinkTap: context.onLinkTap,
     isCodeBlockComplete: context.isCodeBlockComplete,
+    streaming: context.streaming,
   );
+}
+
+/// Builds a `<details>` section from its rendered [children].
+Widget _buildDetails(
+  BlockRenderContext context, {
+  required CmarkNode opener,
+  required String? summaryText,
+  required bool initiallyOpen,
+  required bool isComplete,
+  required List<InlineSpan> leadingSpans,
+  required List<Widget> children,
+  required List<CmarkNode?> nodes,
+  required double spacing,
+}) {
+  final style = context.theme.paragraphTextStyle.copyWith(
+    fontWeight: FontWeight.w600,
+  );
+  final text = TextSpan(text: summaryText ?? 'Details', style: style);
+  Widget summary = Text.rich(
+    leadingSpans.isEmpty ? text : TextSpan(children: [...leadingSpans, text]),
+    strutStyle: StrutStyle.fromTextStyle(style, forceStrutHeight: true),
+    textScaler: TextScaler.linear(context.textScaleFactor),
+  );
+  if (context.selectable) {
+    summary = SourceAwareWidget(
+      attachment: MarkdownSourceAttachment(blockNode: opener),
+      child: summary,
+    );
+  }
+  final data = CmarkDetailsData(
+    node: opener,
+    summary: summary,
+    body: spacedBlockColumn(
+      theme: context.theme,
+      children: children,
+      nodes: nodes,
+      spacing: spacing,
+    ),
+    summaryText: summaryText,
+    initiallyOpen: initiallyOpen,
+    isComplete: isComplete,
+    theme: context.theme,
+  );
+  return _DetailsHost(builder: context.detailsBuilder, data: data);
+}
+
+/// Calls the app's [DetailsBuilder] with a [BuildContext], or builds the
+/// default [CmarkDetails].
+class _DetailsHost extends StatelessWidget {
+  const _DetailsHost({required this.builder, required this.data});
+
+  final DetailsBuilder? builder;
+  final CmarkDetailsData data;
+
+  @override
+  Widget build(BuildContext context) =>
+      builder?.call(context, data) ?? CmarkDetails(data: data);
 }
 
 Widget _buildTable(CmarkNode node, BlockRenderContext context) {
@@ -801,15 +886,14 @@ Widget? _childBlockColumn(
 }) {
   final children = <Widget>[];
   final nodes = <CmarkNode>[];
-  var child = node.firstChild;
-  while (child != null) {
-    final rendered = _renderBlock(child, context, listLevel: listLevel);
-    if (rendered != null) {
-      children.add(rendered);
-      nodes.add(child);
-    }
-    child = child.next;
-  }
+  _renderChildItems(
+    groupDetails(_children(node)),
+    context,
+    listLevel: listLevel,
+    spacing: spacing,
+    children: children,
+    nodes: nodes,
+  );
   if (children.isEmpty) return null;
   return spacedBlockColumn(
     theme: context.theme,
@@ -818,6 +902,62 @@ Widget? _childBlockColumn(
     spacing: spacing,
     tight: tight,
   );
+}
+
+Iterable<CmarkNode> _children(CmarkNode node) sync* {
+  var child = node.firstChild;
+  while (child != null) {
+    yield child;
+    child = child.next;
+  }
+}
+
+/// Renders [items], the grouped child blocks of a container, into
+/// [children] and their [nodes]. A `<details>` section's node is its
+/// `<details>` HTML block.
+void _renderChildItems(
+  List<DetailsItem> items,
+  BlockRenderContext context, {
+  required int listLevel,
+  required double spacing,
+  required List<Widget> children,
+  required List<CmarkNode> nodes,
+}) {
+  for (final item in items) {
+    switch (item) {
+      case DetailsBlockItem(:final node):
+        final rendered = _renderBlock(node, context, listLevel: listLevel);
+        if (rendered != null) {
+          children.add(rendered);
+          nodes.add(node);
+        }
+      case DetailsGroupItem():
+        final groupChildren = <Widget>[];
+        final groupNodes = <CmarkNode>[];
+        _renderChildItems(
+          item.children,
+          context,
+          listLevel: listLevel,
+          spacing: spacing,
+          children: groupChildren,
+          nodes: groupNodes,
+        );
+        children.add(
+          _buildDetails(
+            context,
+            opener: item.opener,
+            summaryText: item.summaryText,
+            initiallyOpen: item.initiallyOpen,
+            isComplete: item.closer != null || !context.streaming,
+            leadingSpans: const [],
+            children: groupChildren,
+            nodes: groupNodes,
+            spacing: spacing,
+          ),
+        );
+        nodes.add(item.opener);
+    }
+  }
 }
 
 /// Space between the child blocks of a container at [listLevel].

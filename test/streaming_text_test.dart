@@ -43,6 +43,29 @@ void main() {
       expect(cmarkStreamingParseLength('```\ncode\n-'), '```\ncode\n'.length);
     });
 
+    test('leaves out an unfinished details tag line, also the first line', () {
+      for (final line in [
+        '<',
+        '<det',
+        '<details',
+        '<details>',
+        '<DETAILS open>',
+        '<details><summary>All mo',
+        '<summary>All',
+        '</det',
+        '</details>',
+        '  </details>',
+        '> <details>',
+      ]) {
+        expect(cmarkStreamingParseLength(line), 0, reason: line);
+        expect(
+          cmarkStreamingParseLength('Text\n$line'),
+          'Text\n'.length,
+          reason: line,
+        );
+      }
+    });
+
     test('keeps other lines', () {
       for (final text in [
         'Text\n- P',
@@ -55,6 +78,11 @@ void main() {
         '-',
         '---',
         'Text',
+        'Text\n<div>',
+        'Text\n<detailsx>',
+        'Text\n<b>bold</b>',
+        'Text\n- <details>',
+        '<details>\n',
       ]) {
         expect(cmarkStreamingParseLength(text), text.length, reason: text);
       }
