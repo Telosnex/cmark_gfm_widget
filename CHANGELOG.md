@@ -1,3 +1,18 @@
+## 1.1.0
+
+- A code block is one render object, `CodeBlockLines`. It lays out and
+  paints only the lines on screen, so a large block opens and scrolls in
+  about the same time as a small one. Streaming lays out only the changed
+  lines. See `doc/ADR_001_CODE_BLOCK_RENDER_OBJECT.md`.
+- Every code line has the same height: the code style's strut is forced.
+  A line with an emoji is no longer taller.
+- Selection and copy work as before. A code block is one selectable, and
+  copy gives its text with its line breaks and empty lines.
+- `MarkdownSourceAttachment.codeLine` is deprecated. Code blocks no longer
+  set it.
+- Code text is no longer in a `RichText` per line. A test that finds code
+  text by `RichText` can find `CodeBlockLines` and read its `lines`.
+
 ## 1.0.3
 
 - `<details>` sections, as on GitHub. The blocks between `<details>` and

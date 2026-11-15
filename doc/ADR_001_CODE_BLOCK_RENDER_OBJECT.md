@@ -1,5 +1,5 @@
 # ADR 001 — One render object for a code block
-Status: DRAFT
+Status: ACCEPTED (implemented in 1.1.0)
 
 ## 1. Problem
 
@@ -90,27 +90,32 @@ D4: The advance check: if one style gives different advances for "i" and
 ```
 
 ```
-D5: The visible rect comes from the ancestor scroll viewports, not from the
-    canvas. RenderCodeBlock listens to the ScrollPosition of each ancestor
-    Scrollable, on both axes. On a change, it computes the visible rect: the
-    intersection of each viewport's bounds and the view's bounds, in local
-    coordinates. If that rect leaves the painted rect, it calls
-    markNeedsPaint. The painted rect is the visible rect plus one viewport
-    extent on each side.
+D5: The visible rect is this box intersected with every ancestor
+    RenderAbstractViewport and the root view, in local coordinates. Paint
+    draws the visible rect plus one visible extent on each side (the
+    painted rect). After every frame, a post-frame callback checks whether
+    the visible rect left the painted rect, and calls markNeedsPaint if so.
     Because: R1
     Instead of: Canvas.getLocalClipBounds (the block is under a
-    RepaintBoundary, so the canvas clip is the block's own bounds); a
-    repaint on every scroll tick (repaints 3 screens per tick for no gain).
+    RepaintBoundary, so the canvas clip is the block's own bounds);
+    listeners on ancestor ScrollPositions (they miss the box moving when
+    content above it changes size; the post-frame check covers scrolling
+    and that, and the margin of one visible extent hides the one-frame
+    delay); a repaint on every scroll tick.
 ```
 
 ```
 D6: Lines are laid out during paint, only for lines in the painted rect.
-    A line's ui.Paragraph is built with ParagraphBuilder and cached by
-    (line index, identical span). The cache keeps at most 512 paragraphs and
-    disposes the least recently used.
+    Each line is a TextPainter with the forced strut, cached by (line
+    index, identical span). The paint cache keeps at most 512 painters and
+    disposes the least recently used. Text queries for lines that are not
+    painted (the streaming fade, selection edges) use a second cache of 32,
+    so they do not push out painted lines.
     Because: R1, R4
-    Instead of: TextPainter per line (extra objects per line); a cache keyed
-    by TextSpan equality (re_editor; equality walks the span tree).
+    Instead of: ParagraphBuilder per line (TextPainter gives the caret,
+    box, word and position queries that selection and the fade need); a
+    cache keyed by TextSpan equality (re_editor; equality walks the span
+    tree).
 ```
 
 ```
@@ -129,8 +134,11 @@ D7: A line longer than 4,096 characters is laid out in pieces of 4,096
 D8: RenderCodeBlock is one Selectable for the whole block. A selection
     edge maps to a line by y / lineHeight, and to a column by layout of that
     line only. The selection is (line, column) to (line, column).
-    getSelectedContent returns the source text of that range, joined with
-    "\n", with no layout. Select-all lays out nothing.
+    getSelectedContent returns the shown text of that range (a tab is the
+    spaces that are shown, as before), joined with "\n", with no layout.
+    Select-all lays out only the two edge lines, for the handles. A drag
+    beside the block selects to the start or end of the line at that
+    height. A triple click selects one line.
     Because: R1, R5
     Instead of: a Selectable per line (needs a registered object per line,
     which is O(N) again).
@@ -138,18 +146,20 @@ D8: RenderCodeBlock is one Selectable for the whole block. A selection
 
 ```
 D9: Copy uses one DisplayedTextFragment for the block, with the line breaks
-    already in its text. MarkdownSourceAttachment.codeLine is deprecated and
-    no longer set.
+    already in its text. One SourceAwareWidget with the code block node
+    wraps the block; the serializer needs no change.
+    MarkdownSourceAttachment.codeLine is deprecated and no longer set.
     Because: R5
     Instead of: one fragment per selected line (O(selected lines) objects
     for a select-all of 21,666 lines).
 ```
 
 ```
-D10: CmarkStreamingReveal reads text through a small interface,
-     RevealText, with: length, caret offset for a position, and boxes for a
-     range. RenderParagraph gets an adapter. RenderCodeBlock implements it
-     and lays out only the lines that the fade covers.
+D10: CmarkStreamingReveal reads text through a private interface,
+     _RevealText: caret offset, boxes for a range, position for an offset,
+     and line height. A paragraph and one code line each implement it. A
+     code block gives the fade only its lines from just before the tail to
+     just after the head, at most the fade's band limit plus two.
      Because: R7, R1
      Instead of: CmarkRevealStyle.whole for code blocks (visible change in
      streaming).
@@ -213,12 +223,13 @@ I6: A hit test does not visit lines.
 
 | Name | Kind | Note |
 |---|---|---|
-| `CodeBlockLines` | `LeafRenderObjectWidget` | Takes `lines`, `style`, `textScaler`, `selectable`, `blockNode`. |
-| `RenderCodeBlock` | `RenderBox` with `Selectable`, `SelectionRegistrant`, `RevealText` | Package-private. |
-| `RevealText` | abstract interface | Package-private. Used by `_RenderReveal`. |
+| `CodeBlockLines` | `LeafRenderObjectWidget` | Exported, so apps and tests can find code text. Takes `lines`, `style`, `textScaler`, `selectable`. |
+| `RenderCodeBlock` | `RenderBox` with `Selectable`, `SelectionRegistrant` | Not exported. |
+| `_RevealText` | private interface in `streaming_reveal.dart` | A paragraph or one code line, for the fade. |
 | `MarkdownSourceAttachment.codeLine` | field | `@Deprecated`. Removed in the next major version. |
-| `_maxCachedParagraphs` | constant | 512 |
-| `_linePieceLength` | constant | 4,096 characters |
+| `_maxCachedPainters` | constant | 512 |
+| `_maxQueryPainters` | constant | 32 |
+| `RenderCodeBlock.linePieceLength` | constant | 4,096 characters |
 
 ## 6. Non-goals
 
@@ -273,7 +284,7 @@ NG4: Editing.
 3. Make I1, I3, I5 and I6 pass. Run the package goldens. Review the changed
    goldens by eye.
 4. Add D7 (long-line pieces). Add a test with a 40,000-character line.
-5. Add `RevealText` (D10). Move `_RenderReveal` to it. Run the reveal tests
+5. Add `_RevealText` (D10). Move `_RenderReveal` to it. Run the reveal tests
    with no other change.
 6. Add the `Selectable` (D8) and the copy fragment (D9). Write I4. Test
    drag selection, select-all, word selection and keyboard extension in a
@@ -309,6 +320,23 @@ NG4: Editing.
   selection is a custom overlay, not `Selectable` (D8), and it has no
   semantics (D11).
 
-## B. Revision history
+## B. Results
+
+Telosnex app, debug widget test, `slowOpus.txt` in the LLM Ledger layout
+(21,666 lines), cmark_gfm_widget 1.0.3 against this change:
+
+| Measurement | 1.0.3 | 1.1.0 |
+|---|---:|---:|
+| First frame | 7,866 ms | 810 ms |
+| Frame after the final highlight arrives | 1,549 ms | 11 ms |
+| 20 hit tests | 64 ms | 7 ms |
+| Frame after a 20,000 px scroll | 273 ms | 38 ms |
+
+Most of the remaining first frame is the highlight parse of 2.3 MB.
+
+## C. Revision history
 
 - 2026-11-15: First draft, after the LLM Ledger hang with `slowOpus.txt`.
+- 2026-11-15: Implemented. D5 uses a post-frame check, not scroll
+  listeners. D6 uses TextPainter and a second cache for queries. D8 and D9
+  record copy and drag details. D10 uses a private per-line interface.

@@ -3,7 +3,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-// Invariants of docs/ADR_001_CODE_BLOCK_RENDER_OBJECT.md.
+// Invariants of doc/ADR_001_CODE_BLOCK_RENDER_OBJECT.md.
 
 const _style = TextStyle(fontFamily: 'monospace', fontSize: 14);
 

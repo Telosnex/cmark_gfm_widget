@@ -1,5 +1,5 @@
 // Selection and copy in a code block: one Selectable for the whole block
-// (docs/ADR_001_CODE_BLOCK_RENDER_OBJECT.md, D8, D9, I4).
+// (doc/ADR_001_CODE_BLOCK_RENDER_OBJECT.md, D8, D9, I4).
 import 'package:cmark_gfm_widget/cmark_gfm_widget.dart';
 import 'package:cmark_gfm_widget/src/render/code_block_lines.dart';
 import 'package:flutter/gestures.dart';

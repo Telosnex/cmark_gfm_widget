@@ -7,7 +7,7 @@ import 'package:flutter/widgets.dart';
 import 'package:pixel_snap_fork/pixel_snap.dart';
 
 /// The lines of a code block, laid out and painted only where they are
-/// visible. See docs/ADR_001_CODE_BLOCK_RENDER_OBJECT.md.
+/// visible. See doc/ADR_001_CODE_BLOCK_RENDER_OBJECT.md.
 ///
 /// [lines] holds one span per line, without line breaks. Every line has the
 /// same height: the strut of [style] is forced.

@@ -381,7 +381,7 @@ Widget _buildHighlightedCodeBlock(
   );
 
   // One render object for all lines: it lays out and paints only the lines on
-  // screen (docs/ADR_001_CODE_BLOCK_RENDER_OBJECT.md). Provisional line spans
+  // screen (doc/ADR_001_CODE_BLOCK_RENDER_OBJECT.md). Provisional line spans
   // are identical instances across streaming appends (see HighlightAdapter),
   // so a chunk lays out only the lines that changed. At a closing fence or
   // document completion, one whole-text parse corrects lookahead-dependent

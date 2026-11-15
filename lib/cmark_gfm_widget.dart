@@ -4,6 +4,7 @@ export 'src/parser/parser_controller.dart';
 export 'src/parser/document_snapshot.dart';
 export 'src/parser/stable_id_registry.dart';
 export 'src/parser/streaming_text.dart';
+export 'src/render/code_block_lines.dart' show CodeBlockLines;
 export 'src/render/inline_math_selectable.dart';
 export 'src/render/inline_renderers.dart';
 export 'src/render/render_pipeline.dart';
