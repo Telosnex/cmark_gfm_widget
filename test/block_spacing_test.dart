@@ -1,5 +1,6 @@
 import 'package:cmark_gfm_widget/cmark_gfm_widget.dart';
 import 'package:flutter/rendering.dart';
+import 'package:cmark_gfm_widget/src/render/code_block_lines.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pixel_snap_fork/material.dart';
 
@@ -51,16 +52,25 @@ Future<double> _pumpHeight(
   return tester.getSize(find.byType(CmarkMarkdownColumn)).height;
 }
 
-/// Height of the one paragraph whose text is exactly [text].
-double _textHeight(WidgetTester tester, String text) {
+/// The one paragraph or code block whose text is exactly [text].
+RenderBox _textBox(WidgetTester tester, String text) {
   final matches = tester.allRenderObjects
-      .whereType<RenderParagraph>()
-      .where((p) => p.text.toPlainText() == text)
+      .where(
+        (o) =>
+            (o is RenderParagraph && o.text.toPlainText() == text) ||
+            (o is RenderCodeBlock &&
+                o.lines.map((l) => l.toPlainText()).join('\n') == text),
+      )
+      .cast<RenderBox>()
       .toSet()
       .toList();
   expect(matches, hasLength(1), reason: 'one paragraph with "$text"');
-  return matches.single.size.height;
+  return matches.single;
 }
+
+/// Height of the one paragraph whose text is exactly [text].
+double _textHeight(WidgetTester tester, String text) =>
+    _textBox(tester, text).size.height;
 
 /// Sum of the heights of the paragraphs with [texts].
 double _textsHeight(WidgetTester tester, List<String> texts) =>
@@ -368,8 +378,6 @@ void main() {
 }
 
 Rect _rect(WidgetTester tester, String text) {
-  final paragraph = tester.allRenderObjects
-      .whereType<RenderParagraph>()
-      .firstWhere((p) => p.text.toPlainText() == text);
-  return paragraph.localToGlobal(Offset.zero) & paragraph.size;
+  final box = _textBox(tester, text);
+  return box.localToGlobal(Offset.zero) & box.size;
 }

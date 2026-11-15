@@ -12,6 +12,7 @@ import '../widgets/source_aware_widget.dart';
 import '../widgets/details.dart';
 import 'block_render_cache.dart';
 import 'block_spacing.dart';
+import 'code_block_lines.dart';
 import 'details_grouping.dart';
 import 'inline_renderers.dart';
 import 'math_parser_settings.dart';
@@ -387,6 +388,16 @@ Widget _buildHighlightedCodeBlock(
   // dependent colors. Only changed lines get new spans. Large corrections
   // notify _HighlightedCodeBlock asynchronously without rebuilding its parent.
   final textScaler = TextScaler.linear(context.textScaleFactor);
+  if (!context.selectable) {
+    return _codeBlockFrame(
+      context,
+      CodeBlockLines(
+        lines: highlighted.lines,
+        style: context.theme.codeBlockTextStyle,
+        textScaler: textScaler,
+      ),
+    );
+  }
   final lineWidgets = <Widget>[];
   for (final line in highlighted.lines) {
     Widget lineWidget = context.selectable
@@ -413,22 +424,23 @@ Widget _buildHighlightedCodeBlock(
           children: lineWidgets,
         );
 
-  // If we wrap in a [SingleChildScrollView], its impossible for clients to
-  // do things like have the codeblock in a container that applys a "fade"
-  // effect at the edges. Therefore, we do not do that here.
-  //
-  // RepaintBoundary keeps per-chunk streaming repaints from repainting
-  // everything around the code block (and vice versa).
-  Widget result = RepaintBoundary(
-    child: Container(
-      padding: context.theme.codeBlockPadding,
-      color: context.theme.codeBlockBackgroundColor,
-      child: child,
-    ),
-  );
-
-  return result;
+  return _codeBlockFrame(context, child);
 }
+
+// If we wrap in a [SingleChildScrollView], its impossible for clients to
+// do things like have the codeblock in a container that applys a "fade"
+// effect at the edges. Therefore, we do not do that here.
+//
+// RepaintBoundary keeps per-chunk streaming repaints from repainting
+// everything around the code block (and vice versa).
+Widget _codeBlockFrame(BlockRenderContext context, Widget child) =>
+    RepaintBoundary(
+      child: Container(
+        padding: context.theme.codeBlockPadding,
+        color: context.theme.codeBlockBackgroundColor,
+        child: child,
+      ),
+    );
 
 Widget _buildMathBlock(CmarkNode node, BlockRenderContext context) {
   final builder = context.mathBlockBuilder ?? _defaultMathBlockBuilder;

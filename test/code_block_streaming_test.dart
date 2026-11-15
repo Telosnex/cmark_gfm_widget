@@ -1,4 +1,5 @@
 import 'package:cmark_gfm_widget/cmark_gfm_widget.dart';
+import 'package:cmark_gfm_widget/src/render/code_block_lines.dart';
 import 'package:material_ui/material_ui.dart' hide SelectionArea;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pixel_snap_fork/material.dart' as ps;
@@ -18,13 +19,12 @@ void main() {
         (widget) => widget is RepaintBoundary && widget.child is ps.Container,
       );
 
-  testWidgets('code block renders one paragraph per line', (tester) async {
+  List<TextSpan> codeLines(WidgetTester tester) =>
+      tester.widget<CodeBlockLines>(find.byType(CodeBlockLines)).lines;
+
+  testWidgets('code block has one span per line', (tester) async {
     await tester.pumpWidget(wrap('```dart\nfinal a = 1;\nfinal b = 2;\n```'));
-    final richTexts = find.descendant(
-      of: codeBlockFinder(),
-      matching: find.byType(ps.RichText),
-    );
-    expect(richTexts, findsNWidgets(2));
+    expect(codeLines(tester), hasLength(2));
   });
 
   testWidgets('blank lines occupy the same height as text lines',
@@ -41,32 +41,18 @@ void main() {
   testWidgets('streaming appends keep earlier line spans identical',
       (tester) async {
     await tester.pumpWidget(wrap('```dart\nfinal a = 1;\nfinal b = 2;\n```'));
-    final before = tester
-        .widgetList<ps.RichText>(
-          find.descendant(
-            of: codeBlockFinder(),
-            matching: find.byType(ps.RichText),
-          ),
-        )
-        .toList();
+    final before = codeLines(tester);
     expect(before, hasLength(2));
 
     // Simulate a streamed chunk that completes line 2 and starts line 3.
     await tester.pumpWidget(
       wrap('```dart\nfinal a = 1;\nfinal b = 2;\nfinal c =\n```'),
     );
-    final after = tester
-        .widgetList<ps.RichText>(
-          find.descendant(
-            of: codeBlockFinder(),
-            matching: find.byType(ps.RichText),
-          ),
-        )
-        .toList();
+    final after = codeLines(tester);
     expect(after, hasLength(3));
 
-    // Line 1 completed before the first frame: identical span instance means
-    // RenderParagraph skips both updateRenderObject work and relayout.
-    expect(identical(before[0].text, after[0].text), isTrue);
+    // Line 1 completed before the first frame: an identical span instance
+    // means RenderCodeBlock reuses its width and its layout.
+    expect(identical(before[0], after[0]), isTrue);
   });
 }

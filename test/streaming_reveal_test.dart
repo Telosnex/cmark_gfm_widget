@@ -10,6 +10,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:cmark_gfm_widget/cmark_gfm_widget.dart';
+import 'package:cmark_gfm_widget/src/render/code_block_lines.dart';
 import 'package:cmark_gfm_widget/src/widgets/streaming_reveal.dart'
     show debugCmarkRevealPaint;
 import 'package:flutter/rendering.dart';
@@ -134,6 +135,60 @@ void main() {
       }
       expect(steps.skip(30).every((s) => s == 0), isTrue,
           reason: 'the fade ends within about 0.5 s; steps: $steps');
+    });
+
+    testWidgets('a code block chunk fades in gradually', (tester) async {
+      final key = GlobalKey();
+      const before = '```\nfinal a = 1;\nfinal b';
+      await tester.pumpWidget(_doc(before, streaming: true, shotKey: key));
+      await _pumpFrames(tester, 60);
+      final base = await _shot(tester, key);
+      await tester.pumpWidget(
+        _doc('$before = a + 22;', streaming: true, shotKey: key),
+      );
+      expect(_layersOf<ShaderMaskLayer>(tester), isNotEmpty);
+      // Only the second line: the fade clips the block's bottom padding
+      // until it ends, for every block type.
+      final block = tester.renderObject<RenderCodeBlock>(
+        find.byType(CodeBlockLines),
+      );
+      final line = block.localToGlobal(Offset(0, block.lineHeight)) &
+          Size(block.size.width, block.lineHeight);
+      final steps = <int>[];
+      var previous = _newInk(await _shot(tester, key), base, line);
+      for (var i = 0; i < 40; i++) {
+        await tester.pump(_frame);
+        final ink = _newInk(await _shot(tester, key), base, line);
+        steps.add(ink - previous);
+        previous = ink;
+      }
+      final total = steps.fold<int>(0, (a, b) => a + b);
+      expect(total, greaterThan(0));
+      for (final s in steps) {
+        expect(s, greaterThanOrEqualTo(0), reason: 'steps: $steps');
+        expect(s, lessThan(total * 0.15), reason: 'steps: $steps');
+      }
+      expect(steps.skip(30).every((s) => s == 0), isTrue,
+          reason: 'steps: $steps');
+    });
+
+    testWidgets('a chunk at the end of a long code block lays out few lines',
+        (tester) async {
+      final code = '```\n${List.generate(5000, (i) => 'line $i').join('\n')}';
+      Widget doc(String text) => Directionality(
+            textDirection: TextDirection.ltr,
+            child: SingleChildScrollView(
+              child: _StreamedDoc(text: text, streaming: true),
+            ),
+          );
+      await tester.pumpWidget(doc(code));
+      // Let the reveal of the first 5,000 lines finish.
+      await tester.pumpAndSettle(_frame);
+      RenderCodeBlock.debugLineLayouts = 0;
+      await _pumpFrames(tester, 40);
+      // The changed line, the new line, and the lines near the head. The
+      // view shows the top of the block, which is already laid out.
+      expect(RenderCodeBlock.debugLineLayouts, lessThanOrEqualTo(12));
     });
 
     testWidgets('a reveal in progress finishes after streaming ends',

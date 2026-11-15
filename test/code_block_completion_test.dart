@@ -2,9 +2,9 @@ import 'dart:async';
 
 import 'package:cmark_gfm_dart/cmark_gfm_dart.dart';
 import 'package:cmark_gfm_widget/cmark_gfm_widget.dart';
+import 'package:cmark_gfm_widget/src/render/code_block_lines.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:pixel_snap_fork/material.dart' as ps;
 
 void main() {
   test('open code stays provisional at newline and CRLF boundaries', () {
@@ -65,8 +65,7 @@ void main() {
     );
     await tester.pumpWidget(
         MaterialApp(home: Column(children: [provisional.single.widget])));
-    final before =
-        tester.widgetList<ps.RichText>(find.byType(ps.RichText)).first.text;
+    final before = _firstCodeLine(tester);
     final finished = pipeline.render(
       controller.parse(source),
       theme,
@@ -77,8 +76,7 @@ void main() {
         identical(provisional.single.widget, finished.single.widget), isFalse);
     await tester.pumpWidget(
         MaterialApp(home: Column(children: [finished.single.widget])));
-    final after =
-        tester.widgetList<ps.RichText>(find.byType(ps.RichText)).first.text;
+    final after = _firstCodeLine(tester);
     expect(after.toPlainText(), before.toPlainText());
     expect(after.toStringDeep(), isNot(before.toStringDeep()));
   });
@@ -121,11 +119,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(
       home: SingleChildScrollView(child: results.single.widget),
     ));
-    String firstLine() => tester
-        .widgetList<ps.RichText>(find.byType(ps.RichText))
-        .first
-        .text
-        .toStringDeep();
+    String firstLine() => _firstCodeLine(tester).toStringDeep();
     final provisional = firstLine();
     // Hold the correction until provisional spans have been observed. Web idle
     // tasks can otherwise finish during pumpWidget, unlike native isolates.
@@ -153,3 +147,6 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 }
+
+TextSpan _firstCodeLine(WidgetTester tester) =>
+    tester.widget<CodeBlockLines>(find.byType(CodeBlockLines)).lines.first;

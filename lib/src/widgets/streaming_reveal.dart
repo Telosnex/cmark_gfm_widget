@@ -7,6 +7,8 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
+import '../render/code_block_lines.dart';
+
 /// How a [CmarkStreamingReveal] shows new content.
 enum CmarkRevealStyle {
   /// Characters fade in one after another, in reading order. Lines below the
@@ -412,12 +414,96 @@ class _Reveal extends SingleChildRenderObjectWidget {
   }
 }
 
+/// A paragraph, or a whole code block, of the revealed block.
 class _Para {
-  _Para(this.paragraph, this.start, this.length);
+  _Para(this.box, this.start, this.length);
 
-  final RenderParagraph paragraph;
+  /// A [RenderParagraph] or a [RenderCodeBlock].
+  final RenderBox box;
   final int start;
   final int length;
+}
+
+/// One paragraph's text, or one line of a code block, for the fade.
+/// Offsets are local to it. [origin] is its top left in [box].
+abstract class _RevealText {
+  RenderBox get box;
+  Offset get origin;
+  double get height;
+  Offset getOffsetForCaret(TextPosition position);
+  List<TextBox> getBoxesForSelection(
+    TextSelection selection, {
+    required ui.BoxHeightStyle boxHeightStyle,
+  });
+  double getFullHeightForCaret(TextPosition position);
+  TextPosition getPositionForOffset(Offset offset);
+}
+
+class _ParagraphText implements _RevealText {
+  _ParagraphText(this.box);
+
+  @override
+  final RenderParagraph box;
+
+  @override
+  Offset get origin => Offset.zero;
+
+  @override
+  double get height => box.size.height;
+
+  @override
+  Offset getOffsetForCaret(TextPosition position) =>
+      box.getOffsetForCaret(position, Rect.zero);
+
+  @override
+  List<TextBox> getBoxesForSelection(
+    TextSelection selection, {
+    required ui.BoxHeightStyle boxHeightStyle,
+  }) =>
+      box.getBoxesForSelection(selection, boxHeightStyle: boxHeightStyle);
+
+  @override
+  double getFullHeightForCaret(TextPosition position) =>
+      box.getFullHeightForCaret(position);
+
+  @override
+  TextPosition getPositionForOffset(Offset offset) =>
+      box.getPositionForOffset(offset);
+}
+
+/// One line of a [RenderCodeBlock]. Only lines near the head are laid out.
+class _CodeLineText implements _RevealText {
+  _CodeLineText(this.box, this.line) : painter = box.linePainter(line);
+
+  @override
+  final RenderCodeBlock box;
+  final int line;
+  final TextPainter painter;
+
+  @override
+  Offset get origin => Offset(0, line * box.lineHeight);
+
+  @override
+  double get height => box.lineHeight;
+
+  @override
+  Offset getOffsetForCaret(TextPosition position) =>
+      painter.getOffsetForCaret(position, Rect.zero);
+
+  @override
+  List<TextBox> getBoxesForSelection(
+    TextSelection selection, {
+    required ui.BoxHeightStyle boxHeightStyle,
+  }) =>
+      painter.getBoxesForSelection(selection, boxHeightStyle: boxHeightStyle);
+
+  @override
+  double getFullHeightForCaret(TextPosition position) =>
+      painter.getFullHeightForCaret(position, Rect.zero);
+
+  @override
+  TextPosition getPositionForOffset(Offset offset) =>
+      painter.getPositionForOffset(offset);
 }
 
 /// The fade on one line, in the reveal's coordinates.
@@ -508,6 +594,14 @@ class _RenderReveal extends RenderProxyBox {
         if (o.textDirection == TextDirection.rtl) rtl = true;
         return;
       }
+      if (o is RenderCodeBlock) {
+        // The lines' text, without line breaks: the same positions as one
+        // paragraph per line.
+        paras.add(_Para(o, total, o.plainLength));
+        total += o.plainLength;
+        if (o.textDirection == TextDirection.rtl) rtl = true;
+        return;
+      }
       o.visitChildren(visit);
     }
 
@@ -580,16 +674,17 @@ class _RenderReveal extends RenderProxyBox {
     final bands = <_Band>[];
     double clipBottom = 0;
 
-    for (final para in _paras) {
+    for (final (p, start, length) in _texts(head, tail)) {
+      final para = (start: start, length: length);
       final pStart = para.start.toDouble();
       final pEnd = (para.start + para.length).toDouble();
-      final p = para.paragraph;
-      if (!p.hasSize || !p.attached) continue;
-      final toThis = p.getTransformTo(this);
+      if (!p.box.hasSize || !p.box.attached) continue;
+      final toThis = p.box.getTransformTo(this)
+        ..multiply(Matrix4.translationValues(p.origin.dx, p.origin.dy, 0));
       if (pEnd <= tail) {
         // Opaque paragraph.
         final bottom =
-            MatrixUtils.transformPoint(toThis, Offset(0, p.size.height)).dy;
+            MatrixUtils.transformPoint(toThis, Offset(0, p.height)).dy;
         clipBottom = math.max(clipBottom, bottom);
         continue;
       }
@@ -609,12 +704,10 @@ class _RenderReveal extends RenderProxyBox {
                 ? TextAffinity.upstream
                 : TextAffinity.downstream,
           ),
-          Rect.zero,
         );
         if (frac == 0 || i >= para.length) return a;
         final b = p.getOffsetForCaret(
           TextPosition(offset: i + 1, affinity: TextAffinity.upstream),
-          Rect.zero,
         );
         return (b.dy - a.dy).abs() < 0.5 ? Offset.lerp(a, b, frac)! : a;
       }
@@ -757,6 +850,47 @@ class _RenderReveal extends RenderProxyBox {
       (ctx, o) => paintBands(ctx, o, 0),
       oldLayer: _clip.layer,
     );
+  }
+
+  /// The texts of the paragraphs in paint order, with their start and
+  /// length. A code block gives only its lines from just before the tail to
+  /// just after the head, and at most [_maxBands] + 2 of them: older fading
+  /// lines are not in a shown band, so they count as opaque.
+  Iterable<(_RevealText, int, int)> _texts(double head, double tail) sync* {
+    for (final para in _paras) {
+      final box = para.box;
+      if (box is RenderParagraph) {
+        yield (_ParagraphText(box), para.start, para.length);
+        continue;
+      }
+      final block = box as RenderCodeBlock;
+      final count = block.lines.length;
+      if (count == 0 || !block.hasSize) continue;
+      final end = para.start + para.length;
+      (_RevealText, int, int) line(int i) => (
+            _CodeLineText(block, i),
+            para.start + block.lineStart(i),
+            block.lineLength(i),
+          );
+      if (end <= tail) {
+        // Opaque: the last line gives the block's bottom.
+        yield line(count - 1);
+        continue;
+      }
+      if (para.start >= head) return;
+      final local =
+          (math.max(tail, para.start.toDouble()) - para.start).floor();
+      final headLine = block.lineAtOffset(
+        (math.min(head, end.toDouble()) - para.start).ceil(),
+      );
+      var first = block.lineAtOffset(local);
+      if (headLine - first > _maxBands + 1) first = headLine - _maxBands - 1;
+      if (first > 0) yield line(first - 1);
+      for (var i = first; i < count && i <= headLine + 1; i++) {
+        yield line(i);
+      }
+      if (head < end) return;
+    }
   }
 
   void _clearLayers() {
