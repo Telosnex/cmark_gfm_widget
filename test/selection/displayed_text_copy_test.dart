@@ -1,4 +1,5 @@
 import 'package:cmark_gfm_widget/cmark_gfm_widget.dart';
+import 'package:cmark_gfm_widget/src/render/code_block_lines.dart';
 import 'package:cmark_gfm_widget/src/flutter/selectable_region.dart' as region;
 import 'package:flutter/gestures.dart';
 import 'package:material_ui/material_ui.dart' hide SelectionArea;
@@ -238,7 +239,9 @@ void main() {
     testWidgets(name, (tester) async {
       await tester.pumpWidget(harness(markdown));
       await tester.pumpAndSettle();
-      final first = tester.allRenderObjects.whereType<RenderParagraph>().first;
+      final first = tester.allRenderObjects
+              .firstWhere((o) => o is RenderParagraph || o is RenderCodeBlock)
+          as RenderBox;
       await tester.tapAt(first.localToGlobal(const Offset(2, 2)));
       await shortcut(tester, LogicalKeyboardKey.keyA);
       await shortcut(tester, LogicalKeyboardKey.keyC);

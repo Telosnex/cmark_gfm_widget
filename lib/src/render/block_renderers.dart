@@ -380,51 +380,27 @@ Widget _buildHighlightedCodeBlock(
     ),
   );
 
-  // One widget per line, instead of one paragraph for the whole block.
-  // Provisional line spans are identical instances across streaming appends
-  // (see HighlightAdapter), so RenderParagraph skips layout for unchanged
-  // lines and streaming costs O(1) per chunk instead of O(lines). At a closing
-  // fence or document completion, one whole-text parse corrects lookahead-
-  // dependent colors. Only changed lines get new spans. Large corrections
-  // notify _HighlightedCodeBlock asynchronously without rebuilding its parent.
-  final textScaler = TextScaler.linear(context.textScaleFactor);
-  if (!context.selectable) {
-    return _codeBlockFrame(
-      context,
-      CodeBlockLines(
-        lines: highlighted.lines,
-        style: context.theme.codeBlockTextStyle,
-        textScaler: textScaler,
-      ),
+  // One render object for all lines: it lays out and paints only the lines on
+  // screen (docs/ADR_001_CODE_BLOCK_RENDER_OBJECT.md). Provisional line spans
+  // are identical instances across streaming appends (see HighlightAdapter),
+  // so a chunk lays out only the lines that changed. At a closing fence or
+  // document completion, one whole-text parse corrects lookahead-dependent
+  // colors. Only changed lines get new spans. Large corrections notify
+  // _HighlightedCodeBlock asynchronously without rebuilding its parent.
+  Widget lines = CodeBlockLines(
+    lines: highlighted.lines,
+    style: context.theme.codeBlockTextStyle,
+    textScaler: TextScaler.linear(context.textScaleFactor),
+    selectable: context.selectable,
+  );
+  if (context.selectable) {
+    // One copy fragment for the block, with its line breaks.
+    lines = SourceAwareWidget(
+      attachment: MarkdownSourceAttachment(blockNode: node),
+      child: lines,
     );
   }
-  final lineWidgets = <Widget>[];
-  for (final line in highlighted.lines) {
-    Widget lineWidget = context.selectable
-        ? Text.rich(line, softWrap: false, textScaler: textScaler)
-        : RichText(text: line, softWrap: false, textScaler: textScaler);
-    if (context.selectable) {
-      // Empty lines have no selectable text. The line index preserves those
-      // boundaries between selected lines without consulting source text.
-      lineWidget = SourceAwareWidget(
-        attachment: MarkdownSourceAttachment(
-          blockNode: node,
-          codeLine: lineWidgets.length,
-        ),
-        child: lineWidget,
-      );
-    }
-    lineWidgets.add(lineWidget);
-  }
-
-  final child = lineWidgets.length == 1
-      ? lineWidgets.first
-      : Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: lineWidgets,
-        );
-
-  return _codeBlockFrame(context, child);
+  return _codeBlockFrame(context, lines);
 }
 
 // If we wrap in a [SingleChildScrollView], its impossible for clients to

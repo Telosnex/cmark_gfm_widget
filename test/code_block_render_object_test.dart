@@ -157,6 +157,28 @@ void main() {
     final render = _render(tester);
     expect(render.size.height, 2 * render.lineHeight);
   });
+
+  testWidgets('D11: semantics give the painted lines and follow scrolling',
+      (tester) async {
+    final handle = tester.ensureSemantics();
+    final controller = ScrollController();
+    await tester.pumpWidget(
+      _scroll(_lines(5000, text: (i) => 'row$i '), controller: controller),
+    );
+    String label() => tester
+        .getSemantics(find.byType(CodeBlockLines))
+        .getSemanticsData()
+        .label;
+    expect(label(), startsWith('row0 42;\nrow1 42;'));
+    expect(label(), isNot(contains('row4999 ')));
+    final render = _render(tester);
+    controller.jumpTo(4000 * render.lineHeight);
+    await tester.pump();
+    await tester.pump();
+    expect(label(), contains('row4000 42;'));
+    expect(label(), isNot(contains('row0 ')));
+    handle.dispose();
+  });
 }
 
 double _redWidth() {

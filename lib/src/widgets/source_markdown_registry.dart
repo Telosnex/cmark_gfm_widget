@@ -7,6 +7,7 @@ class MarkdownSourceAttachment {
   MarkdownSourceAttachment({
     this.blockNode,
     this.isListMarker = false,
+    @Deprecated('Code blocks no longer set it. Removed in 2.0.0.')
     this.codeLine,
   });
 
@@ -17,6 +18,10 @@ class MarkdownSourceAttachment {
 
   /// Index of a rendered code line, including empty lines. Used only to
   /// preserve line boundaries; never to fetch unselected source content.
+  ///
+  /// No longer set: a code block is one selectable, and its copied text has
+  /// its line breaks.
+  @Deprecated('Code blocks no longer set it. Removed in 2.0.0.')
   final int? codeLine;
 }
 

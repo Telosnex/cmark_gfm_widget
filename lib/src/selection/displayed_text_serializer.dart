@@ -53,7 +53,9 @@ class DisplayedTextSerializer {
     final nodeB = b?.blockNode;
 
     if (nodeA != null && identical(nodeA, nodeB)) {
+      // ignore: deprecated_member_use_from_same_package
       final lineA = a?.codeLine;
+      // ignore: deprecated_member_use_from_same_package
       final lineB = b?.codeLine;
       if (lineA != null && lineB != null && lineB > lineA) {
         return '\n' * (lineB - lineA);
