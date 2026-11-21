@@ -1,3 +1,13 @@
+## 1.1.1
+
+- Tables are a `StableTable`, a `Table` that doesn't relayout when a rebuild
+  keeps the same cells. Flutter's `Table` relayouts on every rebuild, and
+  table layout measures every cell's width, so rebuilding a large table
+  (to recolor it, for example) was slow. A cell that changes size still
+  relayouts the table.
+- A test that finds tables with `find.byType(Table)` now finds nothing. Use
+  `find.byWidgetPredicate((w) => w is Table)`.
+
 ## 1.1.0
 
 - A code block is one render object, `CodeBlockLines`. It lays out and

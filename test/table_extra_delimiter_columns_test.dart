@@ -1,3 +1,4 @@
+import 'package:cmark_gfm_widget/src/render/stable_table.dart';
 import 'package:cmark_gfm_widget/cmark_gfm_widget.dart';
 import 'package:cmark_gfm_dart/cmark_gfm_dart.dart';
 import 'package:flutter/rendering.dart';
@@ -34,7 +35,7 @@ void main() {
       ),
     );
 
-    final table = tester.widget<Table>(find.byType(Table));
+    final table = tester.widget<StableTable>(find.byType(StableTable));
     expect(table.children, hasLength(6));
     for (final row in table.children) {
       expect(row.children, hasLength(3));
@@ -105,7 +106,7 @@ void main() {
       ),
     );
 
-    expect(find.byType(Table), findsOneWidget);
+    expect(find.byType(StableTable), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -133,6 +134,7 @@ void main() {
       ));
       expect(tester.takeException(), isNull);
     }
-    expect(tester.widget<Table>(find.byType(Table)).children, hasLength(6));
+    expect(tester.widget<StableTable>(find.byType(StableTable)).children,
+        hasLength(6));
   });
 }

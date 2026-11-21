@@ -1,3 +1,4 @@
+import 'package:cmark_gfm_widget/src/render/stable_table.dart';
 import 'package:cmark_gfm_widget/cmark_gfm_widget.dart';
 import 'package:flutter/rendering.dart';
 import 'package:cmark_gfm_widget/src/render/code_block_lines.dart';
@@ -112,7 +113,7 @@ void main() {
           '| h |\n| - |\n| c |',
           selectable: selectable,
         );
-        final table = tester.renderObject<RenderBox>(find.byType(Table));
+        final table = tester.renderObject<RenderBox>(find.byType(StableTable));
         // The table renderer puts 4 dp above a table with a header row.
         expect(height, table.size.height + 4);
       });

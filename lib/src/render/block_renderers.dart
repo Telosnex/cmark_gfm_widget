@@ -17,6 +17,7 @@ import 'details_grouping.dart';
 import 'inline_renderers.dart';
 import 'math_parser_settings.dart';
 import 'render_pipeline.dart';
+import 'stable_table.dart';
 
 final HighlightAdapter _highlightAdapter = HighlightAdapter();
 
@@ -769,7 +770,7 @@ Widget _buildTable(CmarkNode node, BlockRenderContext context) {
   final defaultColumnWidth =
       context.tableOptions.defaultColumnWidth ?? const IntrinsicColumnWidth();
 
-  final table = Table(
+  final table = StableTable(
     defaultVerticalAlignment: TableCellVerticalAlignment.top,
     defaultColumnWidth: defaultColumnWidth,
     columnWidths: context.tableOptions.columnWidths,
